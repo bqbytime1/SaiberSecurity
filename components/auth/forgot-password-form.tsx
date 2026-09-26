@@ -18,7 +18,7 @@ export function ForgotPasswordForm({ available }: { available: boolean }) {
   if (!available) {
     return (
       <p className="rounded-md border border-border bg-muted px-3 py-3 text-xs leading-relaxed text-muted-foreground">
-        Password reset is not configured on this deployment. Set the mail provider values described in the README to enable it.
+        Password reset is turned off on this deployment. Ask an administrator to reset your password for you.
       </p>
     );
   }

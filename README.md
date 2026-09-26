@@ -355,7 +355,11 @@ The flow is built so it cannot be used to learn things about accounts:
 - **Rate limited twice**, per client address and again per email address, so one mailbox cannot be flooded from rotating clients. The per-address limit is enforced silently, since announcing it would confirm the address.
 - **An account with no password** — created through Google, Microsoft, GitHub or a phone number — is told which method it uses instead of being sent a link that would set a password nobody asked for.
 
-Set `MAIL_API_URL`, `MAIL_API_KEY` and `MAIL_FROM` to send real mail. Any HTTP mail API taking a JSON body of from/to/subject/text works, including Resend and Postmark. Without them the link is written to the server log and shown in the form, which is how the personal localhost build runs; that fallback is refused in production unless `MAIL_DEV_FALLBACK=true` is set explicitly. **Never set that on a deployment other people can reach** — it puts a working reset link in the response for any address.
+Set `MAIL_API_URL`, `MAIL_API_KEY` and `MAIL_FROM` to send real mail. Any HTTP mail API taking a JSON body of from/to/subject/text works, including Resend and Postmark.
+
+**With no provider configured, the message is written to the server log instead**, and that is the default everywhere. Reset therefore works on a fresh deployment rather than presenting a dead form; recovering an account means reading your host's log. The response carries nothing, so this is safe on a public site. Set `MAIL_TRANSPORT="none"` to switch reset off entirely.
+
+One stronger fallback exists for local use only: `MAIL_DEV_FALLBACK=true` also returns the link in the HTTP response and renders it in the form, which is how the personal localhost build runs. **Never set that on a deployment other people can reach** — it hands a working reset link for any address to anyone who asks.
 
 ### Phone
 

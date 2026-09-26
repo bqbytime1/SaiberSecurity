@@ -45,15 +45,21 @@ export function isMailPreviewAllowed(): boolean {
 /**
  * Whether messages may be written to the server log instead of being delivered.
  *
- * Safe on a public deployment in a way the preview is not: reading the log requires
- * access to the hosting dashboard, not merely the ability to submit a form. It lets a
- * single-operator deployment use password reset before any mail account exists.
+ * On by default, so password reset works on a fresh deployment rather than presenting
+ * a dead form to anyone who forgets their password. This is safe in a way the preview
+ * is not: reading the log requires access to the hosting dashboard, not merely the
+ * ability to submit a form, and the response itself carries nothing.
+ *
+ * Set MAIL_TRANSPORT="none" to turn reset off entirely instead.
  */
 export function isMailLogTransportEnabled(): boolean {
-  return process.env.MAIL_TRANSPORT === "log";
+  return process.env.MAIL_TRANSPORT !== "none";
 }
 
-/** True when password reset can be offered at all. */
+/**
+ * True when password reset can be offered at all, which is everywhere except a
+ * deployment that has explicitly set MAIL_TRANSPORT="none".
+ */
 export function isPasswordResetAvailable(): boolean {
   return isMailConfigured() || isMailPreviewAllowed() || isMailLogTransportEnabled();
 }
