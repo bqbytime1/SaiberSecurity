@@ -59,6 +59,13 @@ if [ "${SEED_ON_FIRST_BOOT}" = "true" ]; then
   USERS=$(node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.user.count().then(n=>{console.log(n);return p.\$disconnect()}).catch(()=>{console.log(-1)})" 2>/dev/null || echo -1)
   if [ "$USERS" = "0" ]; then
     echo "[entrypoint] empty database, seeding demo dataset"
+    # The built-in account's password is published in the repository, so a container
+    # only creates it when given a password of its own. Otherwise the security data
+    # is seeded and the operator signs up for their own account.
+    if [ -z "${DEMO_USER_PASSWORD}" ]; then
+      echo "[entrypoint] no DEMO_USER_PASSWORD set; seeding data only, sign up at /signup"
+      export SEED_DEMO_USER=false
+    fi
     npx prisma db seed
   else
     echo "[entrypoint] database already has $USERS user(s), skipping seed"

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { enforceRateLimit, jsonError, parseBody } from "@/lib/api";
+import { enforceRateLimit, jsonError, parseBody, publicOrigin } from "@/lib/api";
 import { isPasswordResetAvailable } from "@/lib/mailer";
 import { GENERIC_RESET_RESPONSE, requestPasswordReset } from "@/lib/password-reset";
 import { rateLimit } from "@/lib/rate-limit";
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const perAddress = rateLimit(`forgot-password-address:${email}`, 5, 60 * 60_000);
 
   try {
-    const outcome = perAddress.ok ? await requestPasswordReset(email, req.nextUrl.origin) : {};
+    const outcome = perAddress.ok ? await requestPasswordReset(email, publicOrigin(req)) : {};
     return NextResponse.json({
       // Deliberately identical whether or not the account exists.
       message: GENERIC_RESET_RESPONSE,

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { enforceRateLimit } from "@/lib/api";
+import { enforceRateLimit, publicOrigin } from "@/lib/api";
 import { signValue } from "@/lib/auth";
 import { buildAuthorizeUrl, createPkcePair, createState, isOAuthProviderId, isProviderConfigured, redirectUri } from "@/lib/oauth";
 
@@ -19,7 +19,9 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   if (limited) return limited;
 
   const { provider } = await ctx.params;
-  const origin = req.nextUrl.origin;
+  // The public origin, so the callback URL matches what is registered with the
+  // provider even when a proxy terminates TLS in front of this server.
+  const origin = publicOrigin(req);
 
   if (!isOAuthProviderId(provider)) {
     return NextResponse.redirect(new URL("/login?error=unknown_provider", origin));

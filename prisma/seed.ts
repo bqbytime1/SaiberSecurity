@@ -11,9 +11,21 @@ import { createRng, generateDataset, PERSONAS, type Persona } from "../lib/synth
 
 export const DEMO_USER = {
   email: "demo@saibersecurity.com",
-  password: "SaiberDemo2026!",
+  // Published in this repository, so it is only ever acceptable where the site is not
+  // reachable from the internet. Override with DEMO_USER_PASSWORD.
+  password: process.env.DEMO_USER_PASSWORD || "SaiberDemo2026!",
   name: "Demo Analyst",
 };
+
+/**
+ * Whether to create the built-in analyst account.
+ *
+ * Containers turn this off unless a password is supplied, because seeding a login
+ * whose password is in a public repository would leave the door open on any
+ * internet-facing deployment. The security data is still seeded either way; sign up
+ * for your own account instead.
+ */
+const CREATE_DEMO_USER = process.env.SEED_DEMO_USER !== "false";
 
 const HOUR = 3_600_000;
 
@@ -39,13 +51,18 @@ async function main() {
   console.log("SaiberSecurity — seeding database");
   const started = Date.now();
 
-  const passwordHash = await bcrypt.hash(DEMO_USER.password, 12);
-  await prisma.user.upsert({
-    where: { email: DEMO_USER.email },
-    update: { passwordHash, name: DEMO_USER.name },
-    create: { email: DEMO_USER.email, passwordHash, name: DEMO_USER.name },
-  });
-  console.log(`✔ demo user ${DEMO_USER.email}`);
+  if (CREATE_DEMO_USER) {
+    const passwordHash = await bcrypt.hash(DEMO_USER.password, 12);
+    await prisma.user.upsert({
+      where: { email: DEMO_USER.email },
+      update: { passwordHash, name: DEMO_USER.name },
+      create: { email: DEMO_USER.email, passwordHash, name: DEMO_USER.name },
+    });
+    console.log(`✔ demo user ${DEMO_USER.email}`);
+  } else {
+    console.log("• skipping the built-in demo account (SEED_DEMO_USER=false)");
+    console.log("  create your own at /signup — the security data below is seeded regardless");
+  }
 
   await prisma.orgSettings.upsert({
     where: { id: "default" },
@@ -128,7 +145,11 @@ async function main() {
   for (const i of incidents) console.log(`  [${i.severity.padEnd(8)}] ${String(i.riskScore).padStart(3)}  ${i.status.padEnd(14)} ${i.eventCount.toString().padStart(3)} ev  ${i.title}`);
 
   console.log(`\nDone in ${((Date.now() - started) / 1000).toFixed(1)}s`);
-  console.log(`\nDemo login → ${DEMO_USER.email} / ${DEMO_USER.password}`);
+  if (CREATE_DEMO_USER) {
+    console.log(`\nDemo login → ${DEMO_USER.email} / ${DEMO_USER.password}`);
+  } else {
+    console.log("\nNo built-in login was created. Sign up at /signup to get in.");
+  }
 }
 
 main()

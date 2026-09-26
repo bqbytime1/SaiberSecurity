@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import { upsertOAuthUser } from "@/lib/accounts";
-import { enforceRateLimit } from "@/lib/api";
+import { enforceRateLimit, publicOrigin } from "@/lib/api";
 import { createSession, pruneExpiredSessions, readSignedValue } from "@/lib/auth";
 import { exchangeCodeForProfile, isOAuthProviderId, isProviderConfigured, redirectUri } from "@/lib/oauth";
 import { OAUTH_STATE_COOKIE } from "../route";
@@ -29,7 +29,9 @@ export async function GET(req: NextRequest, ctx: Ctx) {
   if (limited) return limited;
 
   const { provider } = await ctx.params;
-  const origin = req.nextUrl.origin;
+  // Must resolve to the same value the authorize request used, or the token exchange
+  // is rejected for a redirect_uri mismatch.
+  const origin = publicOrigin(req);
   const store = await cookies();
 
   // The one-shot cookie is cleared regardless of outcome so a state cannot be replayed.

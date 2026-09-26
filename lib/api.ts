@@ -14,6 +14,26 @@ export function getClientIp(req: NextRequest): string {
   return req.headers.get("x-real-ip") ?? "127.0.0.1";
 }
 
+/**
+ * The origin a visitor actually typed, for building links that leave the app.
+ *
+ * Behind a proxy such as Render's, the request the server sees arrives on an internal
+ * address over plain HTTP, so `nextUrl.origin` would produce a reset link or OAuth
+ * callback pointing somewhere nobody can reach. APP_URL wins when set; otherwise the
+ * forwarded headers reconstruct the public origin.
+ */
+export function publicOrigin(req: NextRequest): string {
+  const configured = process.env.APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (host) {
+    const proto = req.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? req.nextUrl.protocol.replace(":", "");
+    return `${proto}://${host}`;
+  }
+  return req.nextUrl.origin;
+}
+
 type AuthedHandler<Ctx> = (req: NextRequest, user: SessionUser, ctx: Ctx) => Promise<Response> | Response;
 
 /** Wrap a route handler so it requires a valid session and never leaks stack traces. */

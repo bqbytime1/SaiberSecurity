@@ -30,21 +30,32 @@ export function isMailConfigured(): boolean {
 }
 
 /**
- * Whether the log-and-show fallback may stand in for real delivery.
+ * Whether a message may be echoed back to whoever triggered it.
  *
- * Off in production by default, because returning a reset link in the response would
- * hand any caller a way into any account. The personal localhost build opts in
- * explicitly, since it runs with NODE_ENV=production but is bound to loopback and has
- * no mail account.
+ * This is the dangerous one: a reset link in the HTTP response hands any caller a way
+ * into any account, so it is off in production unless explicitly opted into. The
+ * personal localhost build does opt in, because it runs with NODE_ENV=production but
+ * is bound to loopback and has no mail account.
  */
-export function isMailFallbackAllowed(): boolean {
+export function isMailPreviewAllowed(): boolean {
   if (process.env.MAIL_DEV_FALLBACK === "true") return true;
   return process.env.NODE_ENV !== "production";
 }
 
-/** True when password reset can be offered at all: real mail, or the local fallback. */
+/**
+ * Whether messages may be written to the server log instead of being delivered.
+ *
+ * Safe on a public deployment in a way the preview is not: reading the log requires
+ * access to the hosting dashboard, not merely the ability to submit a form. It lets a
+ * single-operator deployment use password reset before any mail account exists.
+ */
+export function isMailLogTransportEnabled(): boolean {
+  return process.env.MAIL_TRANSPORT === "log";
+}
+
+/** True when password reset can be offered at all. */
 export function isPasswordResetAvailable(): boolean {
-  return isMailConfigured() || isMailFallbackAllowed();
+  return isMailConfigured() || isMailPreviewAllowed() || isMailLogTransportEnabled();
 }
 
 export async function sendMail(message: MailMessage): Promise<MailResult> {
@@ -53,11 +64,15 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
   const from = process.env.MAIL_FROM;
 
   if (!url || !key || !from) {
-    if (!isMailFallbackAllowed()) {
+    const preview = isMailPreviewAllowed();
+    if (!preview && !isMailLogTransportEnabled()) {
       throw new Error("No mail provider configured");
     }
-    console.warn(`[mail] No provider configured. Message for ${message.to}:\n${message.text}`);
-    return { delivered: false, provider: "none", preview: message.text };
+    console.warn(
+      `[mail] No provider configured; writing to the log instead.\n[mail] to: ${message.to}\n[mail] subject: ${message.subject}\n${message.text}`,
+    );
+    // The preview is returned only where echoing it back is safe.
+    return { delivered: false, provider: "none", ...(preview ? { preview: message.text } : {}) };
   }
 
   const controller = new AbortController();
