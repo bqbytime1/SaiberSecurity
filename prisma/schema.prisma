@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A user may authenticate by password, by a linked identity provider, or by phone,
+// so email and passwordHash are both optional. At least one identifier is enforced
+// in application code (see lib/accounts.ts).
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  emailVerified DateTime?
+  phone         String?   @unique
+  phoneVerified DateTime?
+  passwordHash  String?
+  name          String
+  image         String?
+  signupMethod  String    @default("password")
+  createdAt     DateTime  @default(now())
+  sessions      Session[]
+  accounts      Account[]
+}
+
+/// A federated identity linked to a user (Google, Microsoft, GitHub, ...).
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String
+  providerAccountId String
+  email             String?
+  createdAt         DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// Short-lived one-time codes for phone sign-up and sign-in. Only a keyed hash of
+/// the code is stored, and each row tracks its own attempt count.
+model VerificationCode {
+  id         String    @id @default(cuid())
+  channel    String    @default("phone")
+  target     String
+  codeHash   String
+  name       String?
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([target])
+  @@index([expiresAt])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model SecurityEvent {
+  id            String    @id @default(cuid())
+  timestamp     DateTime
+  source        String
+  eventType     String
+  user          String?
+  sourceIp      String
+  destinationIp String?
+  country       String?
+  device        String?
+  action        String
+  status        String
+  metadata      String?
+  anomalyScore  Int       @default(0)
+  riskScore     Int       @default(0)
+  severity      String    @default("LOW")
+  scoreFactors  String?
+  incidentId    String?
+  incident      Incident? @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+
+  @@index([timestamp])
+  @@index([sourceIp])
+  @@index([user])
+  @@index([eventType])
+  @@index([severity])
+  @@index([riskScore])
+  @@index([incidentId])
+}
+
+model Incident {
+  id                 String          @id @default(cuid())
+  title              String
+  description        String
+  severity           String
+  riskScore          Int
+  status             String          @default("OPEN")
+  category           String
+  correlationKey     String
+  eventCount         Int             @default(0)
+  affectedUser       String?
+  primaryIp          String?
+  detectionReasons   String?
+  aiExplanation      String?
+  recommendedActions String?
+  aiProvider         String          @default("local")
+  events             SecurityEvent[]
+  firstEventAt       DateTime
+  lastEventAt        DateTime
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  resolvedAt         DateTime?
+
+  @@index([status])
+  @@index([severity])
+  @@index([correlationKey])
+  @@index([createdAt])
+}
+
+model OrgSettings {
+  id                   String   @id @default("default")
+  organizationName     String   @default("Acme Corporation")
+  detectionSensitivity String   @default("MEDIUM")
+  autoSimulate         Boolean  @default(false)
+  autoSimulateInterval Int      @default(45)
+  updatedAt            DateTime @updatedAt
+}

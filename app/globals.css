@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0c10;
+  --color-foreground: #e6e8ec;
+
+  --color-panel: #10141a;
+  --color-panel-elevated: #151a22;
+  --color-panel-foreground: #e6e8ec;
+
+  --color-muted: #1a2029;
+  --color-muted-foreground: #8b94a3;
+
+  --color-border: #1f2630;
+  --color-border-strong: #2a3340;
+  --color-input: #1f2630;
+  --color-ring: #22b8e0;
+
+  --color-primary: #22b8e0;
+  --color-primary-foreground: #05131a;
+  --color-primary-muted: rgba(34, 184, 224, 0.12);
+
+  --color-accent: #1a2029;
+  --color-accent-foreground: #e6e8ec;
+
+  --color-destructive: #e5484d;
+  --color-destructive-foreground: #ffffff;
+
+  --color-critical: #e5484d;
+  --color-high: #f76b15;
+  --color-medium: #f5c518;
+  --color-low: #30a46c;
+  --color-info: #22b8e0;
+
+  --color-critical-muted: rgba(229, 72, 77, 0.14);
+  --color-high-muted: rgba(247, 107, 21, 0.14);
+  --color-medium-muted: rgba(245, 197, 24, 0.14);
+  --color-low-muted: rgba(48, 164, 108, 0.14);
+  --color-info-muted: rgba(34, 184, 224, 0.14);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html,
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(34, 184, 224, 0.3);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3340;
+  border-radius: 999px;
+  border: 2px solid var(--color-background);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a4556;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.recharts-cartesian-grid line {
+  stroke: #1f2630;
+}
+.recharts-tooltip-cursor {
+  fill: rgba(255, 255, 255, 0.04) !important;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.status-dot-live {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
