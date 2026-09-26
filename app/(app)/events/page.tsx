@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireUser } from "@/lib/auth";
 import { getEventFilterOptions, listEvents } from "@/lib/queries";
 import { eventsQuerySchema } from "@/lib/validations";
 import { parseSearchParams, type SearchParams } from "@/lib/search-params";
@@ -16,7 +17,8 @@ export const dynamic = "force-dynamic";
 export default async function EventsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const raw = await searchParams;
   const query = parseSearchParams(raw, eventsQuerySchema);
-  const [result, options] = await Promise.all([listEvents({ ...query, pageSize: 50 }), getEventFilterOptions()]);
+  const user = await requireUser();
+  const [result, options] = await Promise.all([listEvents(user.organizationId, { ...query, pageSize: 50 }), getEventFilterOptions(user.organizationId)]);
   const dateValue = typeof raw.date === "string" ? raw.date : undefined;
 
   return (

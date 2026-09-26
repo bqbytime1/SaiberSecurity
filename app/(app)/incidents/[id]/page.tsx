@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Clock, Globe, Server, User } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { getIncidentWithEvents } from "@/lib/queries";
 import { fmtDateTime, fmtDateTimeSeconds, fmtEventType, fmtRelative } from "@/lib/format";
 import type { ScoreFactor } from "@/lib/types";
@@ -19,7 +20,8 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const incident = await getIncidentWithEvents(id);
+  const user = await requireUser();
+  const incident = await getIncidentWithEvents(user.organizationId, id);
   return { title: incident ? incident.title : "Incident" };
 }
 
@@ -74,7 +76,8 @@ function describeEvent(e: { eventType: string; action: string; status: string; m
 
 export default async function IncidentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const incident = await getIncidentWithEvents(id);
+  const user = await requireUser();
+  const incident = await getIncidentWithEvents(user.organizationId, id);
   if (!incident) notFound();
 
   const now = new Date();

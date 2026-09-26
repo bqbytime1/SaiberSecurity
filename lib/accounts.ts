@@ -17,6 +17,15 @@ function isUniqueViolation(err: unknown): boolean {
 
 export type CreateResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
+/**
+ * A new sign-up gets its own organization, which is why a new account opens on an
+ * empty console rather than inheriting whatever anyone else has collected.
+ */
+function newOrganization(name: string) {
+  const trimmed = name.trim();
+  return { create: { name: trimmed ? `${trimmed}'s organization` : "My organization" } };
+}
+
 export async function createPasswordUser(input: { name: string; email: string; password: string }): Promise<CreateResult<User>> {
   const existing = await prisma.user.findUnique({ where: { email: input.email } });
   if (existing) return { ok: false, error: "An account with that email already exists" };
@@ -28,6 +37,7 @@ export async function createPasswordUser(input: { name: string; email: string; p
         name: input.name,
         passwordHash: await hashPassword(input.password),
         signupMethod: "password",
+        organization: newOrganization(input.name),
       },
     });
     return { ok: true, value: user };
@@ -75,6 +85,7 @@ export async function upsertOAuthUser(provider: OAuthProviderId, profile: OAuthP
         name: profile.name?.trim() || profile.email?.split("@")[0] || "New analyst",
         image: profile.image,
         signupMethod: provider,
+        organization: newOrganization(profile.name ?? profile.email?.split("@")[0] ?? ""),
         accounts: {
           create: { provider, providerAccountId: profile.providerAccountId, email: profile.email },
         },
@@ -104,6 +115,7 @@ export async function upsertPhoneUser(phone: string, name: string | null): Promi
         phoneVerified: new Date(),
         name: name?.trim() || `Analyst ${phone.slice(-4)}`,
         signupMethod: "phone",
+        organization: newOrganization(name ?? ""),
       },
     });
     return { ok: true, value: user };

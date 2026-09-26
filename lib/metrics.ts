@@ -70,18 +70,18 @@ function focusFor(driving: Array<{ id: string; title: string }>, severity: Sever
   return eventFallback ?? { href: "/incidents", label: "Review all incidents" };
 }
 
-export async function computeThreatLevel(now = new Date()): Promise<{ level: ThreatLevel; reasons: string[]; focus: ThreatFocus }> {
+export async function computeThreatLevel(organizationId: string, now = new Date()): Promise<{ level: ThreatLevel; reasons: string[]; focus: ThreatFocus }> {
   const since24h = new Date(now.getTime() - 24 * HOUR);
   const since1h = new Date(now.getTime() - HOUR);
   const [openIncidents, criticalEventsLastHour, highEventsLast24h, recentEvents] = await Promise.all([
     prisma.incident.findMany({
-      where: { status: { in: ["OPEN", "INVESTIGATING"] }, createdAt: { gte: since24h } },
+      where: { organizationId, status: { in: ["OPEN", "INVESTIGATING"] }, createdAt: { gte: since24h } },
       select: { id: true, title: true, severity: true, riskScore: true },
       orderBy: [{ riskScore: "desc" }],
     }),
-    prisma.securityEvent.count({ where: { timestamp: { gte: since1h }, severity: "CRITICAL" } }),
-    prisma.securityEvent.count({ where: { timestamp: { gte: since24h }, severity: { in: ["HIGH", "CRITICAL"] } } }),
-    prisma.securityEvent.aggregate({ where: { timestamp: { gte: since1h } }, _avg: { riskScore: true }, _count: true }),
+    prisma.securityEvent.count({ where: { organizationId, timestamp: { gte: since1h }, severity: "CRITICAL" } }),
+    prisma.securityEvent.count({ where: { organizationId, timestamp: { gte: since24h }, severity: { in: ["HIGH", "CRITICAL"] } } }),
+    prisma.securityEvent.aggregate({ where: { organizationId, timestamp: { gte: since1h } }, _avg: { riskScore: true }, _count: true }),
   ]);
   const criticalIncidents = openIncidents.filter((i) => i.severity === "CRITICAL");
   const highIncidents = openIncidents.filter((i) => i.severity === "HIGH");
@@ -151,7 +151,7 @@ function bucketize(events: Array<{ timestamp: Date; riskScore: number; anomalySc
   return buckets;
 }
 
-export async function getDashboardMetrics(now = new Date()): Promise<DashboardMetrics> {
+export async function getDashboardMetrics(organizationId: string, now = new Date()): Promise<DashboardMetrics> {
   const since24h = new Date(now.getTime() - 24 * HOUR);
   const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
@@ -171,29 +171,30 @@ export async function getDashboardMetrics(now = new Date()): Promise<DashboardMe
     recentIncidents,
     threat,
   ] = await Promise.all([
-    prisma.securityEvent.count(),
-    prisma.securityEvent.count({ where: { timestamp: { gte: startOfDay } } }),
-    prisma.securityEvent.count({ where: { timestamp: { gte: since24h } } }),
-    prisma.incident.count({ where: { status: { in: ["OPEN", "INVESTIGATING"] } } }),
-    prisma.incident.count({ where: { status: { in: ["OPEN", "INVESTIGATING"] }, severity: "CRITICAL" } }),
-    prisma.securityEvent.count({ where: { riskScore: { gte: 55 } } }),
-    prisma.securityEvent.count({ where: { timestamp: { gte: since24h }, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } } }),
-    prisma.securityEvent.findMany({ where: { timestamp: { gte: since24h } }, select: { timestamp: true, riskScore: true, anomalyScore: true } }),
-    prisma.securityEvent.groupBy({ by: ["severity"], _count: { _all: true } }),
-    prisma.securityEvent.groupBy({ by: ["eventType"], _count: { _all: true } }),
-    prisma.securityEvent.groupBy({ by: ["eventType"], where: { anomalyScore: { gte: SUSPICIOUS_THRESHOLD } }, _count: { _all: true } }),
+    prisma.securityEvent.count({ where: { organizationId } }),
+    prisma.securityEvent.count({ where: { organizationId, timestamp: { gte: startOfDay } } }),
+    prisma.securityEvent.count({ where: { organizationId, timestamp: { gte: since24h } } }),
+    prisma.incident.count({ where: { organizationId, status: { in: ["OPEN", "INVESTIGATING"] } } }),
+    prisma.incident.count({ where: { organizationId, status: { in: ["OPEN", "INVESTIGATING"] }, severity: "CRITICAL" } }),
+    prisma.securityEvent.count({ where: { organizationId, riskScore: { gte: 55 } } }),
+    prisma.securityEvent.count({ where: { organizationId, timestamp: { gte: since24h }, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } } }),
+    prisma.securityEvent.findMany({ where: { organizationId, timestamp: { gte: since24h } }, select: { timestamp: true, riskScore: true, anomalyScore: true } }),
+    prisma.securityEvent.groupBy({ by: ["severity"], where: { organizationId }, _count: { _all: true } }),
+    prisma.securityEvent.groupBy({ by: ["eventType"], where: { organizationId }, _count: { _all: true } }),
+    prisma.securityEvent.groupBy({ by: ["eventType"], where: { organizationId, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } }, _count: { _all: true } }),
     prisma.securityEvent.findMany({
-      where: { anomalyScore: { gte: SUSPICIOUS_THRESHOLD } },
+      where: { organizationId, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } },
       select: { sourceIp: true, country: true, user: true, riskScore: true, incidentId: true },
       orderBy: { timestamp: "desc" },
       take: 5000,
     }),
     prisma.incident.findMany({
+      where: { organizationId },
       orderBy: [{ createdAt: "desc" }],
       take: 8,
       select: { id: true, title: true, severity: true, riskScore: true, status: true, eventCount: true, affectedUser: true, createdAt: true },
     }),
-    computeThreatLevel(now),
+    computeThreatLevel(organizationId, now),
   ]);
 
   const severityOrder: Severity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
@@ -268,13 +269,13 @@ export interface AnalyticsData {
   meanTimeToResolveMin: number | null;
 }
 
-export async function getAnalytics(now = new Date(), windowHours = 72): Promise<AnalyticsData> {
+export async function getAnalytics(organizationId: string, now = new Date(), windowHours = 72): Promise<AnalyticsData> {
   const since = new Date(now.getTime() - windowHours * HOUR);
   const [windowEvents, incidents, suspiciousEvents] = await Promise.all([
-    prisma.securityEvent.findMany({ where: { timestamp: { gte: since } }, select: { timestamp: true, riskScore: true, anomalyScore: true, eventType: true } }),
-    prisma.incident.findMany({ select: { severity: true, status: true, createdAt: true, resolvedAt: true } }),
+    prisma.securityEvent.findMany({ where: { organizationId, timestamp: { gte: since } }, select: { timestamp: true, riskScore: true, anomalyScore: true, eventType: true } }),
+    prisma.incident.findMany({ where: { organizationId }, select: { severity: true, status: true, createdAt: true, resolvedAt: true } }),
     prisma.securityEvent.findMany({
-      where: { timestamp: { gte: since }, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } },
+      where: { organizationId, timestamp: { gte: since }, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } },
       select: { sourceIp: true, country: true, user: true, riskScore: true, incidentId: true, eventType: true },
       take: 5000,
     }),

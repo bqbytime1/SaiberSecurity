@@ -3,7 +3,7 @@ import { ingestEvents } from "./ingest";
 import { isHostMonitorSupported, mapSampleToEvents, sampleHost } from "./collectors/host-network";
 import { prisma } from "./prisma";
 import { serializeEvent, type EventDTO } from "./serializers";
-import { getSettings } from "./settings";
+import { getSensitivity } from "./settings";
 import { HOST_AGENT_SOURCE } from "./types";
 
 /**
@@ -58,6 +58,7 @@ interface MonitorState {
   connectionsSeen: number;
   externalConnections: number;
   lastError: string | null;
+  organizationId: string | null;
   seen: Map<string, number>;
   polling: boolean;
 }
@@ -79,6 +80,7 @@ const state: MonitorState = (globalForMonitor.__saiberMonitor ??= {
   connectionsSeen: 0,
   externalConnections: 0,
   lastError: null,
+  organizationId: null,
   seen: new Map(),
   polling: false,
 });
@@ -100,6 +102,25 @@ function configuredInterval(): number {
 
 function pruneSeen(now: number) {
   for (const [key, at] of state.seen) if (now - at > SEEN_TTL_MS) state.seen.delete(key);
+}
+
+/**
+ * Which organization the collector's events belong to.
+ *
+ * The collector runs on a timer with nobody signed in, so it cannot infer a tenant
+ * from a request. HOST_MONITOR_ORG_ID names one explicitly; otherwise it reports to
+ * the oldest organization, which on a single-operator deployment is the right one and
+ * on a shared one makes the ambiguity obvious enough to configure.
+ */
+async function collectorOrganizationId(): Promise<string | null> {
+  const configured = process.env.HOST_MONITOR_ORG_ID?.trim();
+  if (configured) {
+    const exists = await prisma.organization.findUnique({ where: { id: configured }, select: { id: true } });
+    if (exists) return exists.id;
+    console.warn(`[monitor] HOST_MONITOR_ORG_ID "${configured}" does not exist; falling back to the oldest organization`);
+  }
+  const oldest = await prisma.organization.findFirst({ orderBy: { createdAt: "asc" }, select: { id: true } });
+  return oldest?.id ?? null;
 }
 
 /** One collection cycle: sample the host, ingest what is new, record what happened. */
@@ -127,8 +148,15 @@ export async function pollOnce(): Promise<{ collected: number; incidents: number
 
     let incidents = 0;
     if (mapped.events.length > 0) {
-      const settings = await getSettings();
-      const summary = await ingestEvents(mapped.events, { sensitivity: settings.detectionSensitivity });
+      const organizationId = await collectorOrganizationId();
+      if (!organizationId) {
+        // Nobody has signed up yet, so there is no tenant to file these under. The
+        // sample is simply dropped; the next poll after the first sign-up will land.
+        state.lastError = "No organization exists yet — sign up before collection can store anything";
+        return { collected: 0, incidents: 0, external: mapped.externalCount };
+      }
+      state.organizationId = organizationId;
+      const summary = await ingestEvents(organizationId, mapped.events, { sensitivity: await getSensitivity(organizationId) });
       state.eventsCollected += summary.created;
       state.incidentsCreated += summary.incidentsCreated;
       incidents = summary.incidentsCreated;
@@ -184,12 +212,12 @@ export interface LiveSnapshot {
  * so the time window is computed outside React's render phase, and so the page and the
  * API return exactly the same shape.
  */
-export async function getLiveSnapshot(limit = 40): Promise<LiveSnapshot> {
+export async function getLiveSnapshot(organizationId: string, limit = 40): Promise<LiveSnapshot> {
   const since = new Date(Date.now() - 3_600_000);
   const [recent, collected, lastHour] = await Promise.all([
-    prisma.securityEvent.findMany({ where: { source: HOST_AGENT_SOURCE }, orderBy: { timestamp: "desc" }, take: limit }),
-    prisma.securityEvent.count({ where: { source: HOST_AGENT_SOURCE } }),
-    prisma.securityEvent.count({ where: { source: HOST_AGENT_SOURCE, timestamp: { gte: since } } }),
+    prisma.securityEvent.findMany({ where: { organizationId, source: HOST_AGENT_SOURCE }, orderBy: { timestamp: "desc" }, take: limit }),
+    prisma.securityEvent.count({ where: { organizationId, source: HOST_AGENT_SOURCE } }),
+    prisma.securityEvent.count({ where: { organizationId, source: HOST_AGENT_SOURCE, timestamp: { gte: since } } }),
   ]);
 
   return {

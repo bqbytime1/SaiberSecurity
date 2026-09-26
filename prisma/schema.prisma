@@ -7,22 +7,42 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// The tenancy boundary. Every security event and incident belongs to exactly one
+/// organization, and a signed-in user only ever sees their own. Signing up creates a
+/// new organization, so a new account always starts empty.
+model Organization {
+  id                   String          @id @default(cuid())
+  name                 String          @default("My organization")
+  detectionSensitivity String          @default("MEDIUM")
+  autoSimulate         Boolean         @default(false)
+  autoSimulateInterval Int             @default(45)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  users                User[]
+  events               SecurityEvent[]
+  incidents            Incident[]
+}
+
 // A user may authenticate by password, by a linked identity provider, or by phone,
 // so email and passwordHash are both optional. At least one identifier is enforced
 // in application code (see lib/accounts.ts).
 model User {
-  id            String    @id @default(cuid())
-  email         String?   @unique
-  emailVerified DateTime?
-  phone         String?   @unique
-  phoneVerified DateTime?
-  passwordHash  String?
-  name          String
-  image         String?
-  signupMethod  String    @default("password")
-  createdAt     DateTime  @default(now())
-  sessions      Session[]
-  accounts      Account[]
+  id             String       @id @default(cuid())
+  email          String?      @unique
+  emailVerified  DateTime?
+  phone          String?      @unique
+  phoneVerified  DateTime?
+  passwordHash   String?
+  name           String
+  image          String?
+  signupMethod   String       @default("password")
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  sessions       Session[]
+  accounts       Account[]
+
+  @@index([organizationId])
 }
 
 /// A federated identity linked to a user (Google, Microsoft, GitHub, ...).
@@ -69,37 +89,43 @@ model Session {
 }
 
 model SecurityEvent {
-  id            String    @id @default(cuid())
-  timestamp     DateTime
-  source        String
-  eventType     String
-  user          String?
-  sourceIp      String
-  destinationIp String?
-  country       String?
-  device        String?
-  action        String
-  status        String
-  metadata      String?
-  anomalyScore  Int       @default(0)
-  riskScore     Int       @default(0)
-  severity      String    @default("LOW")
-  scoreFactors  String?
-  incidentId    String?
-  incident      Incident? @relation(fields: [incidentId], references: [id], onDelete: SetNull)
-  createdAt     DateTime  @default(now())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  timestamp      DateTime
+  source         String
+  eventType      String
+  user           String?
+  sourceIp       String
+  destinationIp  String?
+  country        String?
+  device         String?
+  action         String
+  status         String
+  metadata       String?
+  anomalyScore   Int          @default(0)
+  riskScore      Int          @default(0)
+  severity       String       @default("LOW")
+  scoreFactors   String?
+  incidentId     String?
+  incident       Incident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
 
-  @@index([timestamp])
-  @@index([sourceIp])
-  @@index([user])
-  @@index([eventType])
-  @@index([severity])
-  @@index([riskScore])
+  // Every read is scoped by organization, so it leads each composite index.
+  @@index([organizationId, timestamp])
+  @@index([organizationId, severity])
+  @@index([organizationId, riskScore])
+  @@index([organizationId, eventType])
+  @@index([organizationId, sourceIp])
+  @@index([organizationId, user])
+  @@index([organizationId, source])
   @@index([incidentId])
 }
 
 model Incident {
   id                 String          @id @default(cuid())
+  organizationId     String
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   title              String
   description        String
   severity           String
@@ -121,17 +147,9 @@ model Incident {
   updatedAt          DateTime        @updatedAt
   resolvedAt         DateTime?
 
-  @@index([status])
-  @@index([severity])
-  @@index([correlationKey])
-  @@index([createdAt])
-}
-
-model OrgSettings {
-  id                   String   @id @default("default")
-  organizationName     String   @default("Acme Corporation")
-  detectionSensitivity String   @default("MEDIUM")
-  autoSimulate         Boolean  @default(false)
-  autoSimulateInterval Int      @default(45)
-  updatedAt            DateTime @updatedAt
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([organizationId, severity])
+  // Correlation looks up an open incident by key within one organization.
+  @@index([organizationId, correlationKey])
 }

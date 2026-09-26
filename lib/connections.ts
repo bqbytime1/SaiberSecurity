@@ -70,8 +70,9 @@ function metaNumber(meta: Record<string, unknown>, key: string): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-export async function getConnectionReport(id: string): Promise<ConnectionReport | null> {
-  const row = await prisma.securityEvent.findUnique({ where: { id }, include: { incident: true } });
+export async function getConnectionReport(organizationId: string, id: string): Promise<ConnectionReport | null> {
+  // findFirst, not findUnique: an id from another organization must read as missing.
+  const row = await prisma.securityEvent.findFirst({ where: { id, organizationId }, include: { incident: true } });
   if (!row || row.source !== HOST_AGENT_SOURCE) return null;
 
   const { incident, ...rest } = row;
@@ -83,7 +84,7 @@ export async function getConnectionReport(id: string): Promise<ConnectionReport 
   // Everything this machine has sent to the same remote address.
   const sameDestination = destinationIp
     ? await prisma.securityEvent.findMany({
-        where: { source: HOST_AGENT_SOURCE, destinationIp },
+        where: { organizationId, source: HOST_AGENT_SOURCE, destinationIp },
         orderBy: { timestamp: "desc" },
         take: 500,
       })
@@ -105,7 +106,7 @@ export async function getConnectionReport(id: string): Promise<ConnectionReport 
   // column, and matching it with SQL LIKE would treat characters such as % as
   // wildcards and quietly over-count.
   const recentHostEvents = await prisma.securityEvent.findMany({
-    where: { source: HOST_AGENT_SOURCE },
+    where: { organizationId, source: HOST_AGENT_SOURCE },
     orderBy: { timestamp: "desc" },
     take: PROCESS_SCAN_LIMIT,
   });

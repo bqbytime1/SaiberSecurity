@@ -4,4 +4,4 @@ import { getAnalytics } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
-export const GET = withAuth(async () => NextResponse.json({ data: await getAnalytics() }));
+export const GET = withAuth(async (_req, user) => NextResponse.json({ data: await getAnalytics(user.organizationId) }));

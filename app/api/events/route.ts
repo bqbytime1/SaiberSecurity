@@ -6,13 +6,13 @@ import { serializeEvent } from "@/lib/serializers";
 import type { RawSecurityEvent } from "@/lib/types";
 import { createEventsBodySchema, eventsQuerySchema } from "@/lib/validations";
 
-export const GET = withAuth(async (req) => {
+export const GET = withAuth(async (req, user) => {
   const parsed = parseQuery(req, eventsQuerySchema);
   if ("error" in parsed) return parsed.error;
-  return NextResponse.json(await listEvents(parsed.data));
+  return NextResponse.json(await listEvents(user.organizationId, parsed.data));
 });
 
-export const POST = withAuth(async (req) => {
+export const POST = withAuth(async (req, user) => {
   const limited = enforceRateLimit(req, "events-ingest", 60, 60_000);
   if (limited) return limited;
 
@@ -34,7 +34,7 @@ export const POST = withAuth(async (req) => {
     metadata: e.metadata ?? null,
   }));
 
-  const summary = await ingestEvents(raw);
+  const summary = await ingestEvents(user.organizationId, raw);
   return NextResponse.json(
     {
       created: summary.created,

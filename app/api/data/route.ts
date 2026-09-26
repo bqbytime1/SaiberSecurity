@@ -6,11 +6,12 @@ import { clearDataSchema } from "@/lib/validations";
 export const dynamic = "force-dynamic";
 
 /** Counts behind the "clear everything" control, so the page can say what it will remove. */
-export const GET = withAuth(async () => {
+export const GET = withAuth(async (_req, user) => {
+  const organizationId = user.organizationId;
   const [events, incidents, collected] = await Promise.all([
-    prisma.securityEvent.count(),
-    prisma.incident.count(),
-    prisma.securityEvent.count({ where: { source: "host-agent" } }),
+    prisma.securityEvent.count({ where: { organizationId } }),
+    prisma.incident.count({ where: { organizationId } }),
+    prisma.securityEvent.count({ where: { organizationId, source: "host-agent" } }),
   ]);
   return NextResponse.json({ data: { events, incidents, collected, simulated: events - collected } });
 });
@@ -21,7 +22,7 @@ export const GET = withAuth(async () => {
  * `scope: "simulated"` removes only generated events, leaving anything the host
  * collector actually observed. `scope: "all"` empties both.
  */
-export const DELETE = withAuth(async (req: NextRequest) => {
+export const DELETE = withAuth(async (req: NextRequest, user) => {
   const limited = enforceRateLimit(req, "clear-data", 5, 60_000);
   if (limited) return limited;
 
@@ -29,12 +30,13 @@ export const DELETE = withAuth(async (req: NextRequest) => {
   if ("error" in parsed) return parsed.error;
 
   try {
-    const where = parsed.data.scope === "simulated" ? { source: { not: "host-agent" } } : {};
+    const organizationId = user.organizationId;
+    const where = parsed.data.scope === "simulated" ? { organizationId, source: { not: "host-agent" } } : { organizationId };
 
     // Incidents are detached first: an event row carries the foreign key, and deleting
     // an incident with events still attached would leave them pointing at nothing.
     const events = await prisma.securityEvent.deleteMany({ where });
-    const orphaned = await prisma.incident.findMany({ where: { events: { none: {} } }, select: { id: true } });
+    const orphaned = await prisma.incident.findMany({ where: { organizationId, events: { none: {} } }, select: { id: true } });
     const incidents = await prisma.incident.deleteMany({ where: { id: { in: orphaned.map((i) => i.id) } } });
 
     return NextResponse.json({ data: { eventsDeleted: events.count, incidentsDeleted: incidents.count } });

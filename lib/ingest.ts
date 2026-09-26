@@ -2,7 +2,7 @@ import type { SecurityEvent } from "@prisma/client";
 import { prisma } from "./prisma";
 import { EMPTY_CONTEXT, scoreEvent, SUSPICIOUS_THRESHOLD, type EventContext } from "./anomaly";
 import { correlateEvent } from "./correlation";
-import { getSettings } from "./settings";
+import { getSensitivity } from "./settings";
 import type { EventMetadata, RawSecurityEvent, Sensitivity } from "./types";
 import { safeJsonParse } from "./utils";
 
@@ -25,22 +25,25 @@ interface UserBaseline {
  */
 class BaselineCache {
   private cache = new Map<string, Promise<UserBaseline>>();
-  constructor(private readonly asOf: Date) {}
+  constructor(
+    private readonly organizationId: string,
+    private readonly asOf: Date,
+  ) {}
 
   get(user: string): Promise<UserBaseline> {
     let p = this.cache.get(user);
     if (!p) {
-      p = computeUserBaseline(user, this.asOf);
+      p = computeUserBaseline(this.organizationId, user, this.asOf);
       this.cache.set(user, p);
     }
     return p;
   }
 }
 
-async function computeUserBaseline(user: string, asOf: Date): Promise<UserBaseline> {
+async function computeUserBaseline(organizationId: string, user: string, asOf: Date): Promise<UserBaseline> {
   const since = new Date(asOf.getTime() - BASELINE_DAYS * 24 * HOUR);
   const rows = await prisma.securityEvent.findMany({
-    where: { user, timestamp: { gte: since, lt: asOf }, anomalyScore: { lt: SUSPICIOUS_THRESHOLD } },
+    where: { organizationId, user, timestamp: { gte: since, lt: asOf }, anomalyScore: { lt: SUSPICIOUS_THRESHOLD } },
     select: { country: true, timestamp: true, eventType: true, metadata: true },
     take: 3000,
     orderBy: { timestamp: "desc" },
@@ -78,7 +81,7 @@ async function computeUserBaseline(user: string, asOf: Date): Promise<UserBaseli
   };
 }
 
-async function buildContext(event: RawSecurityEvent, baselines: BaselineCache): Promise<EventContext> {
+async function buildContext(organizationId: string, event: RawSecurityEvent, baselines: BaselineCache): Promise<EventContext> {
   const t = event.timestamp;
   const t15 = new Date(t.getTime() - 15 * MIN);
   const t30 = new Date(t.getTime() - 30 * MIN);
@@ -87,23 +90,23 @@ async function buildContext(event: RawSecurityEvent, baselines: BaselineCache): 
 
   const [ipFailed, ipEventsLastHour, ipSuspiciousLastHour, ipFlagged, ipPortScans, userStuff, baseline] = await Promise.all([
     prisma.securityEvent.findMany({
-      where: { sourceIp: event.sourceIp, eventType: { in: ["failed_login", "credential_attack"] }, timestamp: { gte: t15, lt: t } },
+      where: { organizationId, sourceIp: event.sourceIp, eventType: { in: ["failed_login", "credential_attack"] }, timestamp: { gte: t15, lt: t } },
       select: { user: true },
     }),
-    prisma.securityEvent.count({ where: { sourceIp: event.sourceIp, timestamp: { gte: t60, lt: t } } }),
-    prisma.securityEvent.count({ where: { sourceIp: event.sourceIp, timestamp: { gte: t60, lt: t }, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } } }),
-    prisma.securityEvent.count({ where: { sourceIp: event.sourceIp, timestamp: { gte: t24h, lt: t60 }, anomalyScore: { gte: 55 } } }),
-    prisma.securityEvent.count({ where: { sourceIp: event.sourceIp, eventType: "port_scan", timestamp: { gte: t15, lt: t } } }),
+    prisma.securityEvent.count({ where: { organizationId, sourceIp: event.sourceIp, timestamp: { gte: t60, lt: t } } }),
+    prisma.securityEvent.count({ where: { organizationId, sourceIp: event.sourceIp, timestamp: { gte: t60, lt: t }, anomalyScore: { gte: SUSPICIOUS_THRESHOLD } } }),
+    prisma.securityEvent.count({ where: { organizationId, sourceIp: event.sourceIp, timestamp: { gte: t24h, lt: t60 }, anomalyScore: { gte: 55 } } }),
+    prisma.securityEvent.count({ where: { organizationId, sourceIp: event.sourceIp, eventType: "port_scan", timestamp: { gte: t15, lt: t } } }),
     event.user
       ? Promise.all([
-          prisma.securityEvent.count({ where: { user: event.user, eventType: { in: ["failed_login", "credential_attack"] }, timestamp: { gte: t30, lt: t } } }),
+          prisma.securityEvent.count({ where: { organizationId, user: event.user, eventType: { in: ["failed_login", "credential_attack"] }, timestamp: { gte: t30, lt: t } } }),
           prisma.securityEvent.findFirst({
-            where: { user: event.user, eventType: { in: ["successful_login", "impossible_travel"] }, country: { not: null }, timestamp: { lt: t } },
+            where: { organizationId, user: event.user, eventType: { in: ["successful_login", "impossible_travel"] }, country: { not: null }, timestamp: { lt: t } },
             orderBy: { timestamp: "desc" },
             select: { country: true, timestamp: true },
           }),
-          prisma.securityEvent.count({ where: { user: event.user, eventType: "privilege_escalation", timestamp: { gte: t60, lt: t } } }),
-          prisma.securityEvent.count({ where: { user: event.user, eventType: "successful_login", timestamp: { gte: t60, lt: t } } }),
+          prisma.securityEvent.count({ where: { organizationId, user: event.user, eventType: "privilege_escalation", timestamp: { gte: t60, lt: t } } }),
+          prisma.securityEvent.count({ where: { organizationId, user: event.user, eventType: "successful_login", timestamp: { gte: t60, lt: t } } }),
         ])
       : Promise.resolve([0, null, 0, 0] as const),
     event.user ? baselines.get(event.user) : Promise.resolve(null),
@@ -147,25 +150,28 @@ export interface IngestOptions {
 }
 
 /**
- * Score, persist and correlate a batch of raw events. Events are processed in
- * timestamp order so that frequency-based context reflects preceding events.
+ * Score, persist and correlate a batch of raw events for one organization. Events are
+ * processed in timestamp order so that frequency-based context reflects preceding
+ * events, and all of that context is drawn from the same organization: one tenant's
+ * traffic must never influence another's baselines or scores.
  */
-export async function ingestEvents(raw: RawSecurityEvent[], opts: IngestOptions = {}): Promise<IngestSummary> {
-  const sensitivity = opts.sensitivity ?? (await getSettings()).detectionSensitivity;
+export async function ingestEvents(organizationId: string, raw: RawSecurityEvent[], opts: IngestOptions = {}): Promise<IngestSummary> {
+  const sensitivity = opts.sensitivity ?? (await getSensitivity(organizationId));
   const ordered = [...raw].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   const asOf = ordered[0]?.timestamp ?? new Date();
-  const baselines = new BaselineCache(asOf);
+  const baselines = new BaselineCache(organizationId, asOf);
 
   const summary: IngestSummary = { created: 0, suspicious: 0, incidentsCreated: 0, incidentsUpdated: 0, incidentIds: [], events: [] };
   const touched = new Set<string>();
 
   for (let i = 0; i < ordered.length; i++) {
     const e = ordered[i];
-    const ctx = await buildContext(e, baselines);
+    const ctx = await buildContext(organizationId, e, baselines);
     const score = scoreEvent(e, ctx, sensitivity);
 
     const stored = await prisma.securityEvent.create({
       data: {
+        organizationId,
         timestamp: e.timestamp,
         source: e.source,
         eventType: e.eventType,

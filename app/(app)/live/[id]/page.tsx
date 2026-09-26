@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Cpu, Globe, Network, ShieldAlert } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { getConnectionReport } from "@/lib/connections";
 import { fmtDateTime, fmtDateTimeSeconds, fmtRelative } from "@/lib/format";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,8 @@ function Fact({ label, value, mono = true }: { label: string; value: React.React
 
 export default async function ConnectionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const report = await getConnectionReport(id);
+  const user = await requireUser();
+  const report = await getConnectionReport(user.organizationId, id);
   if (!report) notFound();
 
   const { event, destination, processHistory } = report;

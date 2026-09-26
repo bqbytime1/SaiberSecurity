@@ -4,4 +4,4 @@ import { getDashboardMetrics } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
-export const GET = withAuth(async () => NextResponse.json({ data: await getDashboardMetrics() }));
+export const GET = withAuth(async (_req, user) => NextResponse.json({ data: await getDashboardMetrics(user.organizationId) }));

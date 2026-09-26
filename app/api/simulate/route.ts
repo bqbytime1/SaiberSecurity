@@ -7,7 +7,7 @@ import { createRng, generateLiveBurst, type ScenarioName } from "@/lib/synthetic
 import type { RawSecurityEvent } from "@/lib/types";
 import { simulateSchema } from "@/lib/validations";
 
-export const POST = withAuth(async (req) => {
+export const POST = withAuth(async (req, user) => {
   const limited = enforceRateLimit(req, "simulate", 20, 60_000);
   if (limited) return limited;
 
@@ -21,8 +21,8 @@ export const POST = withAuth(async (req) => {
     raw.push(...generateLiveBurst(rng, now, i === 0 ? (body.data.scenario as ScenarioName | undefined) : undefined));
   }
 
-  const summary = await ingestEvents(raw);
-  const incidents = summary.incidentIds.length ? await prisma.incident.findMany({ where: { id: { in: summary.incidentIds } } }) : [];
+  const summary = await ingestEvents(user.organizationId, raw);
+  const incidents = summary.incidentIds.length ? await prisma.incident.findMany({ where: { id: { in: summary.incidentIds }, organizationId: user.organizationId } }) : [];
 
   return NextResponse.json({
     created: summary.created,

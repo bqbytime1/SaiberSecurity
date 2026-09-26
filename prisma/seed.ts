@@ -51,12 +51,20 @@ async function main() {
   console.log("SaiberSecurity — seeding database");
   const started = Date.now();
 
+  // The seeded dataset belongs to one organization. An existing one is reused so
+  // re-seeding refreshes that tenant rather than accumulating empty ones.
+  const organization =
+    (await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } })) ??
+    (await prisma.organization.create({ data: { name: "Acme Corporation", detectionSensitivity: "MEDIUM" } }));
+  const organizationId = organization.id;
+  console.log(`✔ organization ${organization.name}`);
+
   if (CREATE_DEMO_USER) {
     const passwordHash = await bcrypt.hash(DEMO_USER.password, 12);
     await prisma.user.upsert({
       where: { email: DEMO_USER.email },
       update: { passwordHash, name: DEMO_USER.name },
-      create: { email: DEMO_USER.email, passwordHash, name: DEMO_USER.name },
+      create: { email: DEMO_USER.email, passwordHash, name: DEMO_USER.name, organizationId },
     });
     console.log(`✔ demo user ${DEMO_USER.email}`);
   } else {
@@ -64,15 +72,9 @@ async function main() {
     console.log("  create your own at /signup — the security data below is seeded regardless");
   }
 
-  await prisma.orgSettings.upsert({
-    where: { id: "default" },
-    update: {},
-    create: { id: "default", organizationName: "Acme Corporation", detectionSensitivity: "MEDIUM", autoSimulate: false, autoSimulateInterval: 45 },
-  });
-
-  await prisma.session.deleteMany();
-  await prisma.securityEvent.deleteMany();
-  await prisma.incident.deleteMany();
+  // Only this organization's data is cleared; any other tenant is left untouched.
+  await prisma.securityEvent.deleteMany({ where: { organizationId } });
+  await prisma.incident.deleteMany({ where: { organizationId } });
   console.log("✔ cleared previous events and incidents");
 
   const now = new Date();
@@ -111,9 +113,9 @@ async function main() {
   console.log(`✔ generated ${events.length} synthetic events over 7 days`);
 
   let lastPct = -1;
-  const summary = await ingestEvents(events, {
+  const summary = await ingestEvents(organizationId, events, {
     sensitivity: "MEDIUM",
-    onProgress: (done, total) => {
+    onProgress: (done: number, total: number) => {
       const pct = Math.floor((done / total) * 10) * 10;
       if (pct !== lastPct) {
         lastPct = pct;

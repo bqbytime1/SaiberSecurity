@@ -11,8 +11,15 @@ export interface Paginated<T> {
   totalPages: number;
 }
 
-export async function listEvents(q: EventsQuery): Promise<Paginated<EventDTO>> {
+/**
+ * Every function here takes the organization first. It is not optional and there is no
+ * default: a reader that forgets to pass it fails to compile rather than quietly
+ * returning another tenant's data.
+ */
+
+export async function listEvents(organizationId: string, q: EventsQuery): Promise<Paginated<EventDTO>> {
   const where: Prisma.SecurityEventWhereInput = {
+    organizationId,
     ...(q.severity && { severity: q.severity }),
     ...(q.eventType && { eventType: q.eventType }),
     ...(q.user && { user: { contains: q.user } }),
@@ -47,8 +54,9 @@ export async function listEvents(q: EventsQuery): Promise<Paginated<EventDTO>> {
   return { data: rows.map(serializeEvent), page: q.page, pageSize: q.pageSize, total, totalPages: Math.max(1, Math.ceil(total / q.pageSize)) };
 }
 
-export async function listIncidents(q: IncidentsQuery): Promise<Paginated<IncidentDTO>> {
+export async function listIncidents(organizationId: string, q: IncidentsQuery): Promise<Paginated<IncidentDTO>> {
   const where: Prisma.IncidentWhereInput = {
+    organizationId,
     ...(q.severity && { severity: q.severity }),
     ...(q.status && { status: q.status }),
     ...(q.search && {
@@ -64,17 +72,21 @@ export async function listIncidents(q: IncidentsQuery): Promise<Paginated<Incide
   return { data: rows.map(serializeIncident), page: q.page, pageSize: q.pageSize, total, totalPages: Math.max(1, Math.ceil(total / q.pageSize)) };
 }
 
-export async function getIncidentWithEvents(id: string): Promise<(IncidentDTO & { events: EventDTO[] }) | null> {
-  const incident = await prisma.incident.findUnique({ where: { id }, include: { events: { orderBy: { timestamp: "asc" } } } });
+/** Returns null for an id belonging to another organization, exactly as for one that does not exist. */
+export async function getIncidentWithEvents(organizationId: string, id: string): Promise<(IncidentDTO & { events: EventDTO[] }) | null> {
+  const incident = await prisma.incident.findFirst({
+    where: { id, organizationId },
+    include: { events: { orderBy: { timestamp: "asc" } } },
+  });
   if (!incident) return null;
   const { events, ...rest } = incident;
   return { ...serializeIncident(rest), events: events.map(serializeEvent) };
 }
 
-export async function getEventFilterOptions(): Promise<{ users: string[]; eventTypes: string[] }> {
+export async function getEventFilterOptions(organizationId: string): Promise<{ users: string[]; eventTypes: string[] }> {
   const [users, types] = await Promise.all([
-    prisma.securityEvent.findMany({ where: { user: { not: null } }, distinct: ["user"], select: { user: true }, orderBy: { user: "asc" } }),
-    prisma.securityEvent.findMany({ distinct: ["eventType"], select: { eventType: true }, orderBy: { eventType: "asc" } }),
+    prisma.securityEvent.findMany({ where: { organizationId, user: { not: null } }, distinct: ["user"], select: { user: true }, orderBy: { user: "asc" } }),
+    prisma.securityEvent.findMany({ where: { organizationId }, distinct: ["eventType"], select: { eventType: true }, orderBy: { eventType: "asc" } }),
   ]);
   return { users: users.map((u) => u.user!).filter(Boolean), eventTypes: types.map((t) => t.eventType) };
 }

@@ -24,6 +24,7 @@ This repository contains the MVP: a full-stack Next.js application with a real s
 - [Demo credentials](#demo-credentials)
 - [Sign-up and sign-in methods](#sign-up-and-sign-in-methods)
 - [API documentation](#api-documentation)
+- [Tenancy](#tenancy)
 - [What is real and what is simulated](#what-is-real-and-what-is-simulated)
 - [Live host monitoring](#live-host-monitoring)
 - [Anomaly detection](#anomaly-detection)
@@ -60,6 +61,25 @@ The console provides:
 | `/settings` | Organization name, detection sensitivity, automatic simulation, AI provider status |
 
 A **Simulate New Events** button (and an optional 30–60 s automatic mode) generates realistic activity, runs it through the full pipeline, and updates every view.
+
+---
+
+## Tenancy
+
+Every security event and incident belongs to an **organization**, and a signed-in user only ever sees their own. Signing up creates a new organization, which is why a new account opens on an empty console rather than inheriting whatever anyone else has collected.
+
+The boundary is enforced by making it impossible to forget. Functions that read security data take the organization as their first parameter, with no default, so a caller that omits it fails to compile rather than quietly returning another tenant's rows. Lookups by id use `findFirst` with the organization rather than `findUnique`, so an id belonging to someone else reads as missing: the API answers 404, identically to an id that never existed.
+
+| Concern | Where |
+| --- | --- |
+| Schema | `Organization`, with `organizationId` on `User`, `SecurityEvent` and `Incident`. Every read index leads with it. |
+| Session | `SessionUser.organizationId`, selected alongside the user on every request |
+| Sign-up | [`lib/accounts.ts`](lib/accounts.ts) creates an organization for password, provider and phone sign-ups alike |
+| Correlation | Keyed within one organization, so two tenants seeing the same attacker IP never share an incident |
+| Settings | Per organization, replacing the former single settings row |
+| Collector | Has no signed-in user, so it files events under `HOST_MONITOR_ORG_ID`, or the oldest organization |
+
+**What this does not yet do.** An organization holds exactly one user; there is no way to invite a colleague, and no roles, so every member would be an administrator. Deleting an organization cascades to its data, but nothing in the UI offers that.
 
 ---
 

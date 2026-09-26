@@ -202,8 +202,11 @@ export async function correlateEvent(event: SecurityEvent, factors: ScoreFactor[
   const windowStart = new Date(event.timestamp.getTime() - CORRELATION_WINDOW_MIN * 60_000);
   const windowEnd = new Date(event.timestamp.getTime() + CORRELATION_WINDOW_MIN * 60_000);
 
+  // Scoped to the event's own organization: two tenants seeing the same attacker IP
+  // must not be folded into one shared incident.
   const existing = await prisma.incident.findFirst({
     where: {
+      organizationId: event.organizationId,
       correlationKey: key,
       status: { in: ["OPEN", "INVESTIGATING"] },
       lastEventAt: { gte: windowStart },
@@ -276,6 +279,7 @@ export async function correlateEvent(event: SecurityEvent, factors: ScoreFactor[
 
   const incident = await prisma.incident.create({
     data: {
+      organizationId: event.organizationId,
       title,
       description: descriptionFor(category, events, affectedUser, primaryIp),
       severity,
@@ -302,8 +306,13 @@ export async function correlateEvent(event: SecurityEvent, factors: ScoreFactor[
 }
 
 /** Re-run AI analysis for an incident (used by POST /api/ai/analyze). */
-export async function reanalyzeIncident(incidentId: string): Promise<Incident | null> {
-  const incident = await prisma.incident.findUnique({ where: { id: incidentId }, include: { events: { orderBy: { timestamp: "asc" } } } });
+export async function reanalyzeIncident(organizationId: string, incidentId: string): Promise<Incident | null> {
+  // findFirst with the organization, so an id belonging to another tenant reads as
+  // missing rather than being analysed and returned.
+  const incident = await prisma.incident.findFirst({
+    where: { id: incidentId, organizationId },
+    include: { events: { orderBy: { timestamp: "asc" } } },
+  });
   if (!incident) return null;
   const reasons = safeJsonParse<string[]>(incident.detectionReasons, []);
   const { analysis, provider } = await analyzeIncident({

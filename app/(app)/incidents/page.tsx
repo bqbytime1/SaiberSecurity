@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { listIncidents } from "@/lib/queries";
 import { incidentsQuerySchema } from "@/lib/validations";
 import { parseSearchParams, type SearchParams } from "@/lib/search-params";
@@ -22,7 +23,8 @@ export const dynamic = "force-dynamic";
 
 export default async function IncidentsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const query = parseSearchParams(await searchParams, incidentsQuerySchema);
-  const result = await listIncidents({ ...query, pageSize: 25 });
+  const user = await requireUser();
+  const result = await listIncidents(user.organizationId, { ...query, pageSize: 25 });
   const now = new Date();
   const filtered = Boolean(query.severity || query.status || query.search);
 

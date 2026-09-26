@@ -11,9 +11,9 @@ export const dynamic = "force-dynamic";
  * The console polls this, which is what makes the dashboard visibly move without
  * anyone pressing a button.
  */
-export const GET = withAuth(async (req) => {
+export const GET = withAuth(async (req, user) => {
   const limit = Math.min(50, Math.max(1, Number(req.nextUrl.searchParams.get("limit") ?? 25)));
-  return NextResponse.json({ data: await getLiveSnapshot(limit) });
+  return NextResponse.json({ data: await getLiveSnapshot(user.organizationId, limit) });
 });
 
 /** Start, stop, or force an immediate collection cycle. */

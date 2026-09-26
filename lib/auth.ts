@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
@@ -15,6 +16,8 @@ export interface SessionUser {
   phone: string | null;
   name: string;
   image: string | null;
+  /** The tenancy boundary. Every read of security data must be scoped to this. */
+  organizationId: string;
 }
 
 function sessionSecret(): string {
@@ -108,7 +111,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (!token) return null;
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(token) },
-    include: { user: { select: { id: true, email: true, phone: true, name: true, image: true } } },
+    include: { user: { select: { id: true, email: true, phone: true, name: true, image: true, organizationId: true } } },
   });
   if (!session) return null;
   if (session.expiresAt.getTime() < Date.now()) {
@@ -116,6 +119,19 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     return null;
   }
   return session.user;
+}
+
+/**
+ * The signed-in user, for pages inside the authenticated layout.
+ *
+ * The layout already redirects anonymous visitors, so this mainly gives the page a
+ * non-null user to read `organizationId` from, and stays correct if a page is ever
+ * rendered outside that layout.
+ */
+export async function requireUser(): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  return user;
 }
 
 /** Opportunistic cleanup of expired sessions; safe to call from any request. */

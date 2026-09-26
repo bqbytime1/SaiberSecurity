@@ -11,7 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [settings, threat] = await Promise.all([getSettings(), computeThreatLevel()]);
+  const [settings, threat] = await Promise.all([getSettings(user.organizationId), computeThreatLevel(user.organizationId)]);
   const ai = getAiProviderStatus();
 
   return (
