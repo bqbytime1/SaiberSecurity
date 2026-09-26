@@ -14,6 +14,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Default so the image runs anywhere without the operator knowing this value.
+# docker-compose sets it too; a host like Render, which has no compose file, would
+# otherwise start the container with no DATABASE_URL and fail inside Prisma.
+# Point it elsewhere by setting DATABASE_URL in the host's own environment.
+ENV DATABASE_URL=file:/data/saiber.db
+
 # Install dependencies first so edits to application code reuse this layer.
 # The schema and Prisma config are needed here because postinstall runs `prisma generate`.
 COPY package.json package-lock.json prisma.config.ts ./
@@ -35,8 +41,10 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# Follows PORT, because hosts such as Render assign their own and a hardcoded 3000
+# would report the container unhealthy while it serves correctly.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:3000/login >/dev/null || exit 1
+  CMD curl -fsS "http://127.0.0.1:${PORT:-3000}/login" >/dev/null || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["npm", "start"]
