@@ -1,0 +1,24 @@
+# Caddy requests and renews a Let's Encrypt certificate on its own, and redirects
+# HTTP to HTTPS by default. Replace the email so expiry warnings reach a real inbox.
+{
+	email hostmaster@saibersecurity.com
+}
+
+saibersecurity.com, www.saibersecurity.com {
+	encode zstd gzip
+
+	# The app builds absolute URLs (OAuth callbacks) from APP_URL, but these headers
+	# keep Next.js aware that the original request arrived over HTTPS.
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

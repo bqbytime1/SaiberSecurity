@@ -1,0 +1,20 @@
+node_modules
+.next
+.git
+.claude
+npm-debug.log*
+*.log
+
+# Never bake secrets or a local database into the image.
+.env
+.env.local
+.env.production
+prisma/*.db
+prisma/*.db-journal
+
+# Build/editor noise
+tsconfig.tsbuildinfo
+next-env.d.ts
+.vscode
+.idea
+.DS_Store

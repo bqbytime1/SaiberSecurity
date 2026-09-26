@@ -1,0 +1,41 @@
+# Single-host deployment for saibersecurity.com.
+#
+# Caddy terminates TLS and obtains a certificate from Let's Encrypt automatically,
+# so nothing here holds a certificate or a private key. The app never listens on a
+# public port directly; only Caddy does.
+#
+#   docker compose --env-file .env.production up -d --build
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      # The database file lives on the named volume below, not in the image.
+      DATABASE_URL: "file:/data/saiber.db"
+      NODE_ENV: production
+    volumes:
+      - saiber-data:/data
+    expose:
+      - "3000"
+    # No `ports:` mapping on purpose — reaching the app goes through Caddy.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  saiber-data:
+  caddy-data:
+  caddy-config:
