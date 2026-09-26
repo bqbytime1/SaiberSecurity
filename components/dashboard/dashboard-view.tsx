@@ -137,7 +137,11 @@ export function DashboardView({ metrics }: { metrics: DashboardMetrics }) {
             <CardDescription>Top event types, suspicious share in orange</CardDescription>
           </CardHeader>
           <CardContent>
-            <HorizontalBarChart data={metrics.eventsByType.slice(0, 7).map((t) => ({ label: t.shortLabel, count: t.count, suspicious: t.suspicious }))} dataKey="count" nameKey="label" name="Total" secondaryKey="suspicious" secondaryName="Suspicious" height={200} />
+            {metrics.eventsByType.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No events recorded yet.</p>
+            ) : (
+              <HorizontalBarChart data={metrics.eventsByType.slice(0, 7).map((t) => ({ label: t.shortLabel, count: t.count, suspicious: t.suspicious }))} dataKey="count" nameKey="label" name="Total" secondaryKey="suspicious" secondaryName="Suspicious" height={200} />
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -228,7 +232,13 @@ export function DashboardView({ metrics }: { metrics: DashboardMetrics }) {
         <CardContent className="px-0 pb-0">
           {metrics.recentIncidents.length === 0 ? (
             <div className="px-5 pb-5">
-              <EmptyState title="No incidents yet" description="Simulate new events to see the detection and correlation engine create incidents." action={<SimulateButton size="sm" />} />
+              {/* Real collection is the honest first suggestion; simulating invents
+                  threats, which is only useful for demonstrating the console. */}
+              <EmptyState
+                title="No incidents yet"
+                description="Incidents appear when correlated activity crosses the detection threshold. Turn on live monitoring to watch real traffic, or simulate events to see the engine work on invented ones."
+                action={<SimulateButton size="sm" />}
+              />
             </div>
           ) : (
             <Table>

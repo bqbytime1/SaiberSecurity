@@ -54,6 +54,10 @@ export const monitorActionSchema = z.object({
   action: z.enum(["start", "stop", "poll"]),
 });
 
+export const clearDataSchema = z.object({
+  scope: z.enum(["simulated", "all"]),
+});
+
 export const forgotPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().email("Enter a valid email address").max(254),
 });

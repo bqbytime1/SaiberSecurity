@@ -3,6 +3,7 @@ import { getAiProviderStatus } from "@/lib/ai";
 import { getSettings } from "@/lib/settings";
 import { PageHeader } from "@/components/page-header";
 import { SettingsForm } from "@/components/settings/settings-form";
+import { ClearData } from "@/components/settings/clear-data";
 
 export const metadata: Metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -21,6 +22,9 @@ export default async function SettingsPage() {
         }}
         ai={ai}
       />
+      <div className="mt-4">
+        <ClearData />
+      </div>
     </div>
   );
 }
