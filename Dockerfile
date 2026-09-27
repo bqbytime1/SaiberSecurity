@@ -5,9 +5,12 @@
 # migrations on boot, and it has far fewer ways to break on a first deploy.
 FROM node:24-bookworm-slim
 
-# Prisma's query engine needs OpenSSL; curl backs the container healthcheck.
+# Prisma's query engine needs OpenSSL; curl backs the container healthcheck; net-tools
+# provides the `netstat` the host collector reads its connection table from. Without
+# net-tools the collector fails every poll with "netstat: not found" and the Live page
+# shows an error instead of traffic — the slim image does not include it.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends openssl ca-certificates curl \
+    && apt-get install -y --no-install-recommends openssl ca-certificates curl net-tools \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

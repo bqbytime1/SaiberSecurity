@@ -137,7 +137,8 @@ export function LiveMonitor({ initial }: { initial: Payload | null }) {
               {status?.host ? (
                 <>
                   Reading the connection table and DNS cache of <span className="font-mono text-foreground">{status.host}</span> every{" "}
-                  {Math.round((status.intervalMs ?? 0) / 1000)}s. These are real connections from this machine.
+                  {Math.round((status.intervalMs ?? 0) / 1000)}s — the machine this app is running on, which on a hosted
+                  deployment is the server rather than the computer you are reading this from.
                 </>
               ) : (
                 "Waiting for the first sample…"
@@ -177,7 +178,7 @@ export function LiveMonitor({ initial }: { initial: Payload | null }) {
       <Card>
         <CardHeader>
           <CardTitle>Observed connections</CardTitle>
-          <CardDescription>Newest first, updating every {POLL_MS / 1000} seconds. Each row is a real outbound connection this machine opened — select one for a full report.</CardDescription>
+          <CardDescription>Newest first, updating every {POLL_MS / 1000} seconds. Each row is a real outbound connection the monitored host opened — select one for a full report.</CardDescription>
         </CardHeader>
         <CardContent className="px-0 pb-0">
           {!data || data.recent.length === 0 ? (

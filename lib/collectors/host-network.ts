@@ -116,7 +116,18 @@ async function sampleWindows(): Promise<{ connections: Connection[]; dns: DnsEnt
 
 /** macOS and Linux: parse `netstat -n`. No process attribution without elevation. */
 async function sampleUnix(): Promise<{ connections: Connection[]; dns: DnsEntry[] }> {
-  const { stdout } = await run("netstat -n", { timeout: COMMAND_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+  let stdout: string;
+  try {
+    ({ stdout } = await run("netstat -n", { timeout: COMMAND_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }));
+  } catch (err) {
+    // Slim container images ship without net-tools, and the raw "command not found" that
+    // surfaces on the Live page tells an operator nothing about how to fix it.
+    const message = err instanceof Error ? err.message : String(err);
+    if (/not found|ENOENT/i.test(message)) {
+      throw new Error("netstat is not installed on this host, so the connection table cannot be read. Install net-tools (Debian/Ubuntu: apt-get install net-tools).");
+    }
+    throw err;
+  }
   const connections: Connection[] = [];
 
   for (const line of stdout.split("\n")) {
@@ -139,18 +150,30 @@ async function sampleUnix(): Promise<{ connections: Connection[]; dns: DnsEntry[
 }
 
 /**
- * Split an address/port pair. Linux netstat uses `1.2.3.4:443` and `[::1]:443`;
- * macOS uses a dot, as in `1.2.3.4.443`.
+ * Split an address/port pair, in any of the four shapes netstat produces:
+ *
+ *   [::1]:443                  bracketed — port follows the bracket
+ *   172.17.0.5:41234           Linux IPv4 — port follows the last colon
+ *   2600:1f18:aaaa::5:52100    Linux IPv6 — unbracketed, port still follows the last colon
+ *   192.168.1.20.51234         macOS — port follows the last dot, IPv6 included
+ *                              (2600:1f18::5.51234)
+ *
+ * The separator is a dot only when one appears after the final colon, which is what
+ * distinguishes the macOS form from an unbracketed IPv6 address. Treating every
+ * multi-colon value as unparseable, as this did before, discarded each IPv6
+ * connection on Linux and macOS without a trace.
  */
 function splitHostPort(value: string): { address: string; port: number } | null {
   const bracket = value.lastIndexOf("]");
+  const lastColon = value.lastIndexOf(":");
+  const lastDot = value.lastIndexOf(".");
   let idx: number;
   if (bracket >= 0) {
     idx = value.indexOf(":", bracket);
-  } else if (value.includes(":") && value.split(":").length === 2) {
-    idx = value.lastIndexOf(":");
+  } else if (lastColon >= 0 && lastDot < lastColon) {
+    idx = lastColon;
   } else {
-    idx = value.lastIndexOf(".");
+    idx = lastDot;
   }
   if (idx <= 0) return null;
   const address = value.slice(0, idx).replace(/^\[|\]$/g, "");
