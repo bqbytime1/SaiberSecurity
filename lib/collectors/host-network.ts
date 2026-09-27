@@ -1,5 +1,6 @@
 import "server-only";
 import { exec } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { hostname, platform } from "node:os";
 import { promisify } from "node:util";
 import type { RawSecurityEvent } from "../types";
@@ -114,20 +115,120 @@ async function sampleWindows(): Promise<{ connections: Connection[]; dns: DnsEnt
   return { connections, dns };
 }
 
-/** macOS and Linux: parse `netstat -n`. No process attribution without elevation. */
-async function sampleUnix(): Promise<{ connections: Connection[]; dns: DnsEntry[] }> {
-  let stdout: string;
-  try {
-    ({ stdout } = await run("netstat -n", { timeout: COMMAND_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }));
-  } catch (err) {
-    // Slim container images ship without net-tools, and the raw "command not found" that
-    // surfaces on the Live page tells an operator nothing about how to fix it.
-    const message = err instanceof Error ? err.message : String(err);
-    if (/not found|ENOENT/i.test(message)) {
-      throw new Error("netstat is not installed on this host, so the connection table cannot be read. Install net-tools (Debian/Ubuntu: apt-get install net-tools).");
+/**
+ * Linux: read the connection table straight out of `/proc/net/tcp` and `tcp6`.
+ *
+ * The kernel exposes the same table netstat prints, so reading it directly removes the
+ * dependency on net-tools — which slim container images do not ship, and which made the
+ * collector fail every poll on a deployed host. It also spawns no process at all.
+ *
+ * Addresses are hex and little-endian per 32-bit word: `0100007F:1F90` is 127.0.0.1:8080.
+ */
+async function sampleLinuxProc(): Promise<{ connections: Connection[]; dns: DnsEntry[] }> {
+  const connections: Connection[] = [];
+
+  for (const [file, width] of [
+    ["/proc/net/tcp", 8],
+    ["/proc/net/tcp6", 32],
+  ] as const) {
+    let text: string;
+    try {
+      text = await readFile(file, "utf8");
+    } catch {
+      continue; // tcp6 is absent on a host with IPv6 disabled; that is not an error.
     }
-    throw err;
+    connections.push(...parseProcNetTcp(text, width));
   }
+
+  return { connections, dns: [] };
+}
+
+/**
+ * Pure parser for one `/proc/net/tcp` table, split out from the file read so it can be
+ * exercised against captured kernel output. `width` is the hex length of an address:
+ * 8 for the IPv4 table, 32 for the IPv6 one.
+ */
+export function parseProcNetTcp(text: string, width: number): Connection[] {
+  const ESTABLISHED = "01";
+  const out: Connection[] = [];
+
+  // The first line is the column header.
+  for (const line of text.split("\n").slice(1)) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 4 || parts[3] !== ESTABLISHED) continue;
+    const local = parseProcAddress(parts[1], width);
+    const remote = parseProcAddress(parts[2], width);
+    if (!local || !remote) continue;
+    out.push({
+      localAddress: local.address,
+      localPort: local.port,
+      remoteAddress: remote.address,
+      remotePort: remote.port,
+      // The table gives an inode, not a pid; mapping it back means walking every
+      // /proc/*/fd, which needs root for other users' processes. Not worth it here.
+      pid: null,
+      process: null,
+    });
+  }
+
+  return out;
+}
+
+/** `0100007F:1F90` -> 127.0.0.1 port 8080. `width` is the hex length of the address. */
+function parseProcAddress(value: string, width: number): { address: string; port: number } | null {
+  const sep = value.lastIndexOf(":");
+  if (sep <= 0) return null;
+  const hex = value.slice(0, sep);
+  const port = Number.parseInt(value.slice(sep + 1), 16);
+  if (hex.length !== width || !Number.isFinite(port) || port <= 0) return null;
+  if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
+
+  // Each 8-hex-char word is byte-reversed, so undo that a word at a time.
+  const bytes: number[] = [];
+  for (let w = 0; w < hex.length; w += 8) {
+    const word = hex.slice(w, w + 8);
+    for (let b = 4; b > 0; b--) bytes.push(Number.parseInt(word.slice((b - 1) * 2, b * 2), 16));
+  }
+
+  if (bytes.length === 4) return { address: bytes.join("."), port };
+
+  // An IPv4-mapped address (::ffff:a.b.c.d) is really an IPv4 connection; report it as one
+  // so scoring and the UI do not treat the same peer as two different hosts.
+  if (bytes.slice(0, 10).every((b) => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff) {
+    return { address: bytes.slice(12).join("."), port };
+  }
+
+  const groups: string[] = [];
+  for (let i = 0; i < 16; i += 2) groups.push(((bytes[i] << 8) | bytes[i + 1]).toString(16));
+  return { address: compressIpv6(groups), port };
+}
+
+/** Collapse the longest run of zero groups to `::`, as RFC 5952 requires. */
+function compressIpv6(groups: string[]): string {
+  let bestStart = -1;
+  let bestLen = 0;
+  let start = -1;
+  for (let i = 0; i <= groups.length; i++) {
+    if (i < groups.length && groups[i] === "0") {
+      if (start < 0) start = i;
+    } else if (start >= 0) {
+      const len = i - start;
+      if (len > bestLen) {
+        bestLen = len;
+        bestStart = start;
+      }
+      start = -1;
+    }
+  }
+  if (bestLen < 2) return groups.join(":");
+  const head = groups.slice(0, bestStart).join(":");
+  const tail = groups.slice(bestStart + bestLen).join(":");
+  return `${head}::${tail}`;
+}
+
+/** macOS: parse `netstat -n`. No process attribution without elevation. */
+async function sampleUnix(): Promise<{ connections: Connection[]; dns: DnsEntry[] }> {
+  const { stdout } = await run("netstat -n", { timeout: COMMAND_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
   const connections: Connection[] = [];
 
   for (const line of stdout.split("\n")) {
@@ -187,7 +288,8 @@ export async function sampleHost(): Promise<HostSample> {
   const takenAt = new Date();
   const host = hostname();
   try {
-    const { connections, dns } = platform() === "win32" ? await sampleWindows() : await sampleUnix();
+    const os = platform();
+    const { connections, dns } = os === "win32" ? await sampleWindows() : os === "linux" ? await sampleLinuxProc() : await sampleUnix();
     return { takenAt, host, connections, dns };
   } catch (err) {
     return { takenAt, host, connections: [], dns: [], error: err instanceof Error ? err.message : String(err) };
