@@ -39,7 +39,7 @@ export function AppShell({ user, organizationName, threatLevel, ai, autoSimulate
         aria-label="Primary"
       >
         <div className="flex h-14 items-center justify-between border-b border-border px-4">
-          <BrandWordmark subtitle="AI-powered security monitoring" />
+          <BrandWordmark subtitle="AI-powered security monitoring" href="/dashboard" />
           <Button variant="ghost" size="icon-sm" className="lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation">
             <X />
           </Button>

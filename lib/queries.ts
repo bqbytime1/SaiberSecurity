@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { serializeEvent, serializeIncident, type EventDTO, type IncidentDTO } from "./serializers";
-import type { EventsQuery, IncidentsQuery } from "./validations";
+import { ACTIVE_INCIDENT_FILTER, type EventsQuery, type IncidentsQuery } from "./validations";
 
 export interface Paginated<T> {
   data: T[];
@@ -58,7 +58,7 @@ export async function listIncidents(organizationId: string, q: IncidentsQuery): 
   const where: Prisma.IncidentWhereInput = {
     organizationId,
     ...(q.severity && { severity: q.severity }),
-    ...(q.status && { status: q.status }),
+    ...(q.status && (q.status === ACTIVE_INCIDENT_FILTER ? { status: { in: ["OPEN", "INVESTIGATING"] } } : { status: q.status })),
     ...(q.search && {
       OR: [{ title: { contains: q.search } }, { description: { contains: q.search } }, { affectedUser: { contains: q.search } }, { primaryIp: { contains: q.search } }],
     }),

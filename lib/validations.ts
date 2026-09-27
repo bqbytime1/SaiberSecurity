@@ -119,10 +119,17 @@ export const eventsQuerySchema = z.object({
 });
 export type EventsQuery = z.infer<typeof eventsQuerySchema>;
 
+/**
+ * "ACTIVE" is not a stored status but a filter meaning open or investigating, which is
+ * what the dashboard counts. Without it a link from those figures would land on a
+ * queue showing a different number than the card it came from.
+ */
+export const ACTIVE_INCIDENT_FILTER = "ACTIVE";
+
 export const incidentsQuerySchema = z.object({
   ...pagination,
   severity: z.enum(SEVERITIES).optional(),
-  status: z.enum(INCIDENT_STATUSES).optional(),
+  status: z.enum([...INCIDENT_STATUSES, ACTIVE_INCIDENT_FILTER]).optional(),
   search: z.string().trim().max(128).optional(),
 });
 export type IncidentsQuery = z.infer<typeof incidentsQuerySchema>;

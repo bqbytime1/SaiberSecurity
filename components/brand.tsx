@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export function BrandMark({ className }: { className?: string }) {
@@ -10,14 +11,34 @@ export function BrandMark({ className }: { className?: string }) {
   );
 }
 
-export function BrandWordmark({ className, subtitle }: { className?: string; subtitle?: string }) {
-  return (
-    <div className={cn("flex items-center gap-2.5", className)}>
+/**
+ * The wordmark. Pass `href` to make it a link, which is what people expect of a logo
+ * in a product's own navigation; leave it off on the sign-in pages, where there is
+ * nowhere signed-out to go.
+ */
+export function BrandWordmark({ className, subtitle, href }: { className?: string; subtitle?: string; href?: string }) {
+  const content = (
+    <>
       <BrandMark />
       <div className="leading-tight">
         <div className="text-[15px] font-semibold tracking-tight text-foreground">SaiberSecurity</div>
         {subtitle && <div className="text-[11px] text-muted-foreground">{subtitle}</div>}
       </div>
-    </div>
+    </>
+  );
+
+  if (!href) return <div className={cn("flex items-center gap-2.5", className)}>{content}</div>;
+
+  return (
+    <Link
+      href={href}
+      aria-label="SaiberSecurity home"
+      className={cn(
+        "flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
+        className,
+      )}
+    >
+      {content}
+    </Link>
   );
 }

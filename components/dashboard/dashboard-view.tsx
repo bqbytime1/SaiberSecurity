@@ -27,26 +27,52 @@ const THREAT_RING: Record<ThreatLevel, string> = {
   CRITICAL: "border-critical/40 bg-critical-muted",
 };
 
-function StatCard({ label, value, hint, icon: Icon, tone }: { label: string; value: number; hint?: string; icon: React.ComponentType<{ className?: string }>; tone?: "critical" | "high" | "default" }) {
+/**
+ * Each card links to the records it counts, with a filter matching the figure exactly,
+ * so the destination never shows a different number than the card that led there.
+ */
+function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone,
+  href,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: "critical" | "high" | "default";
+  href: string;
+}) {
   return (
-    <Card>
-      <CardContent className="flex items-start justify-between p-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
-          <p className={cn("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", tone === "critical" && value > 0 && "text-critical", tone === "high" && value > 0 && "text-high")}>{formatNumber(value)}</p>
-          {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
-        </div>
-        <span className="rounded-md border border-border bg-background p-2 text-muted-foreground">
-          <Icon className="size-4" />
-        </span>
-      </CardContent>
-    </Card>
+    <Link
+      href={href}
+      aria-label={`${label}: ${formatNumber(value)}. View them.`}
+      className="group rounded-lg focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+    >
+      <Card className="h-full transition-colors group-hover:border-border-strong">
+        <CardContent className="flex items-start justify-between p-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className={cn("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", tone === "critical" && value > 0 && "text-critical", tone === "high" && value > 0 && "text-high")}>{formatNumber(value)}</p>
+            {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+          </div>
+          <span className="rounded-md border border-border bg-background p-2 text-muted-foreground transition-colors group-hover:border-border-strong group-hover:text-primary">
+            <Icon className="size-4" />
+          </span>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
 export function DashboardView({ metrics }: { metrics: DashboardMetrics }) {
   const { totals, threatLevel } = metrics;
   const generated = new Date(metrics.generatedAt);
+  // Midnight UTC of the generating day, matching how "events today" is counted.
+  const startOfDayUtc = new Date(Date.UTC(generated.getUTCFullYear(), generated.getUTCMonth(), generated.getUTCDate())).toISOString();
 
   return (
     <div>
@@ -92,11 +118,12 @@ export function DashboardView({ metrics }: { metrics: DashboardMetrics }) {
         </Link>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <StatCard label="Total events" value={totals.totalEvents} hint={`${formatNumber(totals.eventsLast24h)} in last 24h`} icon={Activity} />
-          <StatCard label="Active incidents" value={totals.activeIncidents} hint="Open or investigating" icon={ShieldAlert} tone="high" />
-          <StatCard label="Critical incidents" value={totals.criticalIncidents} hint="Requires immediate action" icon={AlertOctagon} tone="critical" />
-          <StatCard label="High-risk events" value={totals.highRiskEvents} hint="Risk score ≥ 55" icon={TrendingUp} tone="high" />
-          <StatCard label="Events today" value={totals.eventsToday} hint={`${formatNumber(totals.suspiciousLast24h)} suspicious in 24h`} icon={CalendarClock} />
+          <StatCard label="Total events" value={totals.totalEvents} hint={`${formatNumber(totals.eventsLast24h)} in last 24h`} icon={Activity} href="/events" />
+          <StatCard label="Active incidents" value={totals.activeIncidents} hint="Open or investigating" icon={ShieldAlert} tone="high" href="/incidents?status=ACTIVE" />
+          <StatCard label="Critical incidents" value={totals.criticalIncidents} hint="Requires immediate action" icon={AlertOctagon} tone="critical" href="/incidents?severity=CRITICAL&status=ACTIVE" />
+          <StatCard label="High-risk events" value={totals.highRiskEvents} hint="Risk score ≥ 55" icon={TrendingUp} tone="high" href="/events?minRisk=55" />
+          {/* The card counts from midnight UTC, so the link carries that same boundary. */}
+          <StatCard label="Events today" value={totals.eventsToday} hint={`${formatNumber(totals.suspiciousLast24h)} suspicious in 24h`} icon={CalendarClock} href={`/events?from=${startOfDayUtc}`} />
         </div>
       </div>
 

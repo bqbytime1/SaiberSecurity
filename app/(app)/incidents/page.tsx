@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { listIncidents } from "@/lib/queries";
-import { incidentsQuerySchema } from "@/lib/validations";
+import { ACTIVE_INCIDENT_FILTER, incidentsQuerySchema } from "@/lib/validations";
 import { parseSearchParams, type SearchParams } from "@/lib/search-params";
 import { INCIDENT_STATUS_LABELS, INCIDENT_STATUSES, SEVERITIES } from "@/lib/types";
 import { fmtDateTime, fmtRelative } from "@/lib/format";
@@ -37,7 +37,13 @@ export default async function IncidentsPage({ searchParams }: { searchParams: Pr
           <SearchInput initial={query.search ?? ""} placeholder="Search title, user or IP…" className="sm:w-72" />
           <div className="flex gap-2">
             <FilterSelect paramKey="severity" value={query.severity} allLabel="All severities" options={SEVERITIES.map((s) => ({ value: s, label: s }))} className="w-40" />
-            <FilterSelect paramKey="status" value={query.status} allLabel="All statuses" options={INCIDENT_STATUSES.map((s) => ({ value: s, label: INCIDENT_STATUS_LABELS[s] }))} className="w-44" />
+            <FilterSelect
+              paramKey="status"
+              value={query.status}
+              allLabel="All statuses"
+              options={[{ value: ACTIVE_INCIDENT_FILTER, label: "Active" }, ...INCIDENT_STATUSES.map((s) => ({ value: s, label: INCIDENT_STATUS_LABELS[s] }))]}
+              className="w-44"
+            />
           </div>
           <span className="ml-auto text-xs text-muted-foreground">{result.total} incident{result.total === 1 ? "" : "s"}</span>
         </div>
