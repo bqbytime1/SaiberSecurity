@@ -1,22 +1,41 @@
 # Single-host deployment for saibersecurity.com.
 #
 # Caddy terminates TLS and obtains a certificate from Let's Encrypt automatically,
-# so nothing here holds a certificate or a private key. The app never listens on a
-# public port directly; only Caddy does.
+# so nothing here holds a certificate or a private key. PostgreSQL keeps its data on
+# a named volume, which is what makes accounts and sessions survive a redeploy.
 #
 #   docker compose --env-file .env.production up -d --build
 
 services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: saiber
+      POSTGRES_DB: saiber
+      # Set POSTGRES_PASSWORD in .env.production; it must match DATABASE_URL.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - saiber-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saiber -d saiber"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No published port: only the app reaches the database.
+
   app:
     build: .
     restart: unless-stopped
     env_file: .env.production
     environment:
-      # The database file lives on the named volume below, not in the image.
-      DATABASE_URL: "file:/data/saiber.db"
+      # Overrides whatever is in the env file, so the app always talks to the
+      # database beside it rather than to something left over from another setup.
+      DATABASE_URL: "postgresql://saiber:${POSTGRES_PASSWORD}@db:5432/saiber?schema=public"
       NODE_ENV: production
-    volumes:
-      - saiber-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
     expose:
       - "3000"
     # No `ports:` mapping on purpose — reaching the app goes through Caddy.
@@ -36,6 +55,6 @@ services:
       - caddy-config:/config
 
 volumes:
-  saiber-data:
+  saiber-db:
   caddy-data:
   caddy-config:

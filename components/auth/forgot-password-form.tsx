@@ -76,7 +76,7 @@ export function ForgotPasswordForm({ available }: { available: boolean }) {
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="forgot-email">Email</Label>
-        <Input id="forgot-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
+        <Input id="forgot-email" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
         <p className="text-[11px] text-muted-foreground">We send a link that expires in one hour and works once.</p>
       </div>
       {error && (

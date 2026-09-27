@@ -18,28 +18,24 @@ fail() {
 # a missing SESSION_SECRET only when someone first tries to sign in.
 
 if [ -z "${DATABASE_URL}" ]; then
-  fail "DATABASE_URL is not set. The image defaults it to file:/data/saiber.db, so an
-       empty value means the host is overriding it with a blank one. Set it in your
-       host's environment, or remove the empty override."
+  fail "DATABASE_URL is not set. It must point at a PostgreSQL server, for example
+         postgresql://user:password@host:5432/saiber
+       On Render, create a PostgreSQL instance and use its Internal Database URL."
 fi
 
 case "${DATABASE_URL}" in
+  postgres://*|postgresql://*)
+    echo "[entrypoint] using PostgreSQL"
+    ;;
   file:*)
-    DB_PATH=$(printf '%s' "${DATABASE_URL}" | sed 's|^file:||')
-    case "${DB_PATH}" in
-      /*) DB_DIR=$(dirname "${DB_PATH}") ;;
-      *)  DB_DIR="/app/prisma" ;;
-    esac
-    mkdir -p "${DB_DIR}" 2>/dev/null || true
-    if ! touch "${DB_DIR}/.write-test" 2>/dev/null; then
-      fail "Cannot write to ${DB_DIR}, where the SQLite database lives.
-       This container runs as the non-root user 'node'. A disk mounted there by the
-       host is usually owned by root, which makes it read-only to this process.
-       Either set the mount's owner to uid 1000, or point DATABASE_URL at a
-       PostgreSQL server instead (see DEPLOYMENT.md)."
-    fi
-    rm -f "${DB_DIR}/.write-test"
-    echo "[entrypoint] database directory ${DB_DIR} is writable"
+    fail "DATABASE_URL points at a SQLite file, which this app no longer uses.
+       A container's filesystem is rebuilt on every deploy, and on hosts that sleep
+       when idle it is rebuilt on every wake, so a file there loses every account and
+       session each time. Point DATABASE_URL at a PostgreSQL server instead."
+    ;;
+  *)
+    fail "DATABASE_URL is not a PostgreSQL connection string. It should begin with
+       postgresql:// — see DEPLOYMENT.md."
     ;;
 esac
 

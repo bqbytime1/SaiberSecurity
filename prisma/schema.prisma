@@ -2,8 +2,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// PostgreSQL rather than SQLite, because the database has to outlive the process.
+// A hosted container's filesystem is disposable: it is rebuilt on every deploy and,
+// on services that sleep when idle, on every wake. A SQLite file there takes every
+// account, session and collected event with it each time.
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

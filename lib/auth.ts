@@ -6,7 +6,22 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
 export const SESSION_COOKIE = "saiber_session";
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * How long a session lives without being used. Thirty days, matching what people
+ * expect of a site they stay signed in to; a fixed short window signs active users
+ * out for no reason, and the sliding renewal below means only real inactivity ends
+ * a session.
+ */
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Renew once less than half the window is left, rather than on every request: the
+ * result is the same for the user, at one extra write per fortnight of use instead
+ * of one per page view.
+ */
+const SESSION_RENEW_BELOW_MS = SESSION_TTL_MS / 2;
+
 const BCRYPT_ROUNDS = 12;
 
 export interface SessionUser {
@@ -118,7 +133,40 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
     return null;
   }
+  await renewSession(store, session.id, session.expiresAt);
   return session.user;
+}
+
+/**
+ * Slide an in-use session's expiry forward, so continued use keeps someone signed in
+ * and only real inactivity logs them out.
+ *
+ * The database row is the authority and can be written from anywhere. The cookie can
+ * only be rewritten while a response is still being built — in a route handler or a
+ * server action, not in a rendered server component, where Next.js throws — so that
+ * half is attempted and allowed to fail. Every page in the console polls the API, so
+ * the cookie picks up the new expiry moments after any page load that renews the row.
+ */
+async function renewSession(
+  store: Awaited<ReturnType<typeof cookies>>,
+  sessionId: string,
+  expiresAt: Date,
+): Promise<void> {
+  if (expiresAt.getTime() - Date.now() >= SESSION_RENEW_BELOW_MS) return;
+  const next = new Date(Date.now() + SESSION_TTL_MS);
+  const updated = await prisma.session
+    .update({ where: { id: sessionId }, data: { expiresAt: next } })
+    .then(() => true)
+    .catch(() => false);
+  if (!updated) return;
+  const current = store.get(SESSION_COOKIE)?.value;
+  if (!current) return;
+  try {
+    store.set(SESSION_COOKIE, current, cookieOptions(next));
+  } catch {
+    // Read-only cookie store: a server component render. The row is already extended,
+    // and the next route handler on this session rewrites the cookie.
+  }
 }
 
 /**

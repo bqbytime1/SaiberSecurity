@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +29,6 @@ async function postJson(url: string, body: unknown): Promise<{ ok: true; data: R
 }
 
 function EmailSignup() {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,23 +45,25 @@ function EmailSignup() {
       setPending(false);
       return;
     }
-    router.push("/dashboard");
-    router.refresh();
+    // A real navigation, so the browser treats this as a completed sign-up and offers to
+    // save the new credentials. See the same note in login-form.tsx.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/dashboard");
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="signup-name">Full name</Label>
-        <Input id="signup-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Chen" required />
+        <Input id="signup-name" name="name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Chen" required />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="signup-email">Work email</Label>
-        <Input id="signup-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
+        <Input id="signup-email" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="signup-password">Password</Label>
-        <Input id="signup-password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
+        <Input id="signup-password" name="new-password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
         <p className="text-[11px] text-muted-foreground">At least {PASSWORD_MIN_LENGTH} characters. Avoid common passwords and anything containing your email name.</p>
       </div>
       <FormError message={error} />
@@ -76,7 +76,6 @@ function EmailSignup() {
 }
 
 function PhoneSignup({ available }: { available: boolean }) {
-  const router = useRouter();
   const [step, setStep] = useState<"entry" | "code">("entry");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -120,8 +119,9 @@ function PhoneSignup({ available }: { available: boolean }) {
       setPending(false);
       return;
     }
-    router.push("/dashboard");
-    router.refresh();
+    // A real navigation, for the same reason as the email form above.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/dashboard");
   }
 
   if (step === "entry") {

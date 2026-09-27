@@ -73,12 +73,12 @@ export function ResetPasswordForm({ token, minLength }: { token: string; minLeng
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="new-password">New password</Label>
-        <Input id="new-password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
+        <Input id="new-password" name="new-password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
         <p className="text-[11px] text-muted-foreground">At least {minLength} characters. Avoid common passwords.</p>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="confirm-password">Confirm password</Label>
-        <Input id="confirm-password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="••••••••" required />
+        <Input id="confirm-password" name="confirm-password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="••••••••" required />
       </div>
       {error && (
         <p role="alert" className="rounded-md border border-critical/40 bg-critical-muted px-3 py-2 text-xs text-critical">

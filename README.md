@@ -1,8 +1,8 @@
-# SaiberSecurity
+# SAiberSecurity
 
 **AI-powered security monitoring.**
 
-SaiberSecurity learns what normal looks like across your users, devices, and infrastructure, then identifies the deviations that matter. It ingests security events, scores each one with an explainable behavioural anomaly engine, correlates related suspicious events into incidents, explains those incidents in plain language, and recommends defensive next steps.
+SAiberSecurity learns what normal looks like across your users, devices, and infrastructure, then identifies the deviations that matter. It ingests security events, scores each one with an explainable behavioural anomaly engine, correlates related suspicious events into incidents, explains those incidents in plain language, and recommends defensive next steps.
 
 This repository contains the MVP: a full-stack Next.js application with a real server-side detection engine, incident correlation, an AI abstraction layer with a deterministic fallback, session authentication, a seeded demo dataset, and a security-operations console.
 
@@ -126,12 +126,12 @@ See [Live host monitoring](#live-host-monitoring) for how it runs.
 │  auth.ts         bcrypt password hashing, HMAC-signed DB-backed sessions │
 │  validations.ts  Zod schemas for every input boundary                    │
 │  rate-limit.ts   In-memory fixed-window limiter for sensitive routes     │
-│  settings.ts     Organization settings (singleton row)                   │
+│  settings.ts     Per-organization settings, scoped by organizationId     │
 └───────────────┬──────────────────────────────────────────────────────────┘
                 │
 ┌───────────────▼──────────────────────────────────────────────────────────┐
-│ Prisma ORM → SQLite (prisma/schema.prisma)                               │
-│  User · Session · SecurityEvent · Incident · OrgSettings                 │
+│ Prisma ORM → PostgreSQL (prisma/schema.prisma)                            │
+│  Organization · User · Account · Session · SecurityEvent · Incident       │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -150,7 +150,7 @@ Key design decisions:
 - **Next.js 16** (App Router, Server Components, Route Handlers) · **React 19** · **TypeScript** (strict)
 - **Tailwind CSS v4** with a custom dark security-console theme · **shadcn/ui-style** components on Radix primitives · **lucide-react** icons
 - **Recharts 3** for all charts
-- **Prisma 6** + **SQLite**
+- **Prisma 6** + **PostgreSQL 17**
 - **Zod 4** for validation · **bcryptjs** for password hashing · Node `crypto` for session signing
 - OpenAI-compatible chat completions API for optional AI analysis
 
@@ -158,16 +158,28 @@ Key design decisions:
 
 ## Setup
 
-Requirements: **Node.js 20+** (tested on Node 24) and npm.
+Requirements: **Node.js 20+** (tested on Node 24), npm, and a **PostgreSQL 15+** server.
+
+If you do not already have PostgreSQL, the quickest path is a container:
+
+```bash
+docker run -d --name saiber-pg -p 5432:5432 \
+  -e POSTGRES_PASSWORD=saiberlocal -e POSTGRES_DB=saiber postgres:17-alpine
+```
+
+On Windows without Docker, `winget install PostgreSQL.PostgreSQL.17` installs a service; create the database with `createdb -U postgres saiber`.
 
 ```bash
 npm install
 cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
+# edit .env so DATABASE_URL matches your server, then:
 npm run setup                 # applies migrations, then seeds the demo dataset
 npm run dev
 ```
 
 Then open <http://localhost:3000> and sign in with the demo credentials below. Seeding takes about 35 seconds, because every synthetic event is scored and correlated through the real pipeline.
+
+There is no file-based database option. The app stores accounts, sessions and collected events in PostgreSQL because that is the only way they survive a redeploy or a container restart on a hosted deployment — see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 `npm install` runs `prisma generate` automatically via `postinstall`. If npm reports that install scripts were blocked (`npm warn allow-scripts`), approve them with `npm approve-scripts prisma @prisma/engines esbuild` and run `npm rebuild`.
 
@@ -181,7 +193,7 @@ Copy `.env.example` to `.env`. Only `DATABASE_URL` and `SESSION_SECRET` are requ
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Prisma connection string. Default `file:./dev.db` (SQLite, relative to `prisma/`). |
+| `DATABASE_URL` | yes | PostgreSQL connection string, e.g. `postgresql://postgres:password@127.0.0.1:5432/saiber?schema=public`. There is no default and no file-based fallback. |
 | `SESSION_SECRET` | yes | Secret used to HMAC-sign session cookies. Must be ≥ 32 characters. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. |
 | `AI_API_KEY` | no | API key for an OpenAI-compatible provider. Leave empty to use the local deterministic analysis engine. |
 | `AI_BASE_URL` | no | Base URL of the provider, e.g. `https://api.openai.com/v1`. Any OpenAI-compatible endpoint works (Azure OpenAI, OpenRouter, Ollama, vLLM, …). |
@@ -206,14 +218,14 @@ The schema lives in [`prisma/schema.prisma`](prisma/schema.prisma). Models:
 - **Session** — server-side session record (`tokenHash`, `userId`, `expiresAt`)
 - **SecurityEvent** — `timestamp, source, eventType, user, sourceIp, destinationIp, country, device, action, status, metadata (JSON), anomalyScore, riskScore, severity, scoreFactors (JSON), incidentId, createdAt`
 - **Incident** — `title, description, severity, riskScore, status, category, correlationKey, eventCount, affectedUser, primaryIp, detectionReasons (JSON), aiExplanation (JSON), recommendedActions (JSON), aiProvider, firstEventAt, lastEventAt, createdAt, updatedAt, resolvedAt`
-- **OrgSettings** — singleton row: `organizationName, detectionSensitivity, autoSimulate, autoSimulateInterval`
+- **Organization** — the tenancy boundary, one per account: `name, detectionSensitivity, autoSimulate, autoSimulateInterval`. Every user, event and incident carries its `organizationId`, and every query in `lib/` takes one as its first argument so a missing scope is a compile error rather than a data leak.
 
 Prisma is configured by [`prisma.config.ts`](prisma.config.ts), which sets the schema path and the seed command. It also loads `.env` explicitly, because the Prisma CLI stops reading `.env` on its own once a config file is present.
 
 Commands:
 
 ```bash
-npx prisma migrate dev      # apply migrations (creates dev.db on first run)
+npx prisma migrate deploy   # apply migrations to the database in DATABASE_URL
 npm run seed                # re-generate the demo dataset (clears events and incidents)
 npm run db:reset            # drop, re-migrate and re-seed
 npm run db:studio           # browse data in Prisma Studio
@@ -276,8 +288,7 @@ Before deploying:
 
 1. Set a strong `SESSION_SECRET`.
 2. Set `NODE_ENV=production` so session cookies are marked `Secure`; serve over HTTPS.
-3. Run `npx prisma migrate deploy` against the production database.
-4. SQLite is fine for a single-instance demo; switch the Prisma datasource to PostgreSQL for multi-instance deployments (the schema uses no SQLite-specific features).
+3. Point `DATABASE_URL` at a PostgreSQL server that lives outside the app container. The bundled entrypoint runs `npx prisma migrate deploy` on every boot, so the schema is applied for you.
 
 ---
 
@@ -330,11 +341,11 @@ The repository ships everything that deployment needs:
 | [`.env.production.example`](.env.production.example) | Production environment template. |
 
 ```bash
-cp .env.production.example .env.production   # then fill in SESSION_SECRET and APP_URL
+cp .env.production.example .env.production   # fill in SESSION_SECRET, POSTGRES_PASSWORD, APP_URL
 docker compose --env-file .env.production up -d --build
 ```
 
-Two things to know before you rely on it. SQLite lives on a Docker volume, which is fine for one server but rules out serverless hosts with an ephemeral filesystem; the deployment guide covers switching to PostgreSQL. And **the container files have not been executed in the environment where this project was built**, because Docker is not installed there, so watch the first build rather than running it detached.
+The stack includes its own PostgreSQL container, whose data sits on a named volume so accounts and sessions survive redeploys. On a managed host such as Render you provision a Postgres instance instead and set `DATABASE_URL` to it; the guide has the exact steps. One caveat: **the container files have not been executed in the environment where this project was built**, because Docker is not installed there, so watch the first build rather than running it detached.
 
 ---
 
@@ -632,7 +643,7 @@ Two things this testing does **not** cover: there is no authorization model to t
 
 ## Limitations
 
-- **Single instance.** Rate limiting is in-memory and SQLite is file-based; horizontal scaling requires a shared store and PostgreSQL.
+- **Single instance.** Rate limiting is in-memory, so horizontal scaling weakens it until it moves to a shared store. The database itself is PostgreSQL and already supports more than one app container.
 - **Heuristic baselines.** Baselines are computed from the last 30 days of normal events per user with simple statistics (mode, mean/σ, activity histogram). There is no ML model and no per-organisation tuning beyond the sensitivity multiplier.
 - **Scores are not recomputed retroactively.** Changing sensitivity affects new events only.
 - **Correlation is key-based.** Cross-entity chains (e.g. a port scan followed by a login from the same IP) are surfaced through IP-reputation factors but are not merged into a single kill-chain incident.

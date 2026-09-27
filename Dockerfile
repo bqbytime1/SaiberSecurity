@@ -14,11 +14,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Default so the image runs anywhere without the operator knowing this value.
-# docker-compose sets it too; a host like Render, which has no compose file, would
-# otherwise start the container with no DATABASE_URL and fail inside Prisma.
-# Point it elsewhere by setting DATABASE_URL in the host's own environment.
-ENV DATABASE_URL=file:/data/saiber.db
+# DATABASE_URL has no default on purpose. It points at a PostgreSQL server that lives
+# outside this container, so there is no sensible guess, and the entrypoint fails with
+# a clear message rather than starting against the wrong database.
 
 # Install dependencies first so edits to application code reuse this layer.
 # The schema and Prisma config are needed here because postinstall runs `prisma generate`.
@@ -29,9 +27,7 @@ RUN npm ci --include=dev
 COPY . .
 RUN npm run build
 
-# SQLite lives on a mounted volume so the database survives redeploys.
-RUN mkdir -p /data && chown -R node:node /app /data
-VOLUME ["/data"]
+RUN chown -R node:node /app
 
 COPY --chown=node:node docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

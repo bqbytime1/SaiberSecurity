@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +20,6 @@ export interface DemoHint {
  * decides whether to send them at all (see app/login/page.tsx).
  */
 export function LoginForm({ notice, demo }: { notice?: string | null; demo?: DemoHint | null }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +45,15 @@ export function LoginForm({ notice, demo }: { notice?: string | null; demo?: Dem
         setError(body.error ?? "Unable to sign in");
         return;
       }
-      router.push("/dashboard");
-      router.refresh();
+      // A real navigation rather than router.push, because that is what tells a browser
+      // its password manager should offer to save these credentials: the prompt follows a
+      // form submission that ends in a page load, and a client-side transition is not one.
+      // It also guarantees the console renders with the new session rather than anything
+      // cached from before sign-in. The lint rule below prefers a client-side transition
+      // for speed, which is the wrong trade for the one navigation in the app where the
+      // browser's own behaviour depends on a real page load.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.assign("/dashboard");
     } catch {
       setError("Network error — please try again");
     } finally {
@@ -65,7 +70,9 @@ export function LoginForm({ notice, demo }: { notice?: string | null; demo?: Dem
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
+        {/* `name` as well as `autoComplete`: password managers key their saved entries on
+            the field name, and some will not offer to fill a form without one. */}
+        <Input id="email" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required />
       </div>
       <div className="space-y-1.5">
         <div className="flex items-baseline justify-between gap-3">
@@ -74,7 +81,7 @@ export function LoginForm({ notice, demo }: { notice?: string | null; demo?: Dem
             Forgot password?
           </Link>
         </div>
-        <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
+        <Input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
       </div>
       {visibleNotice && (
         <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">

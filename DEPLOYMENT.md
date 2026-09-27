@@ -1,6 +1,10 @@
 # Deploying SaiberSecurity to saibersecurity.com
 
-This describes a complete, self-contained deployment on a single Linux server: the app in one container, [Caddy](https://caddyserver.com) in another terminating TLS with a certificate it obtains automatically from Let's Encrypt, and the SQLite database on a Docker volume that survives redeploys.
+This describes a complete, self-contained deployment on a single Linux server: the app in one container, [Caddy](https://caddyserver.com) in another terminating TLS with a certificate it obtains automatically from Let's Encrypt, and PostgreSQL in a third with its data on a Docker volume that survives redeploys.
+
+If you are deploying to a managed host such as Render rather than a server of your own, skip to [Deploying to a managed host](#deploying-to-a-managed-host).
+
+> **The database is not optional and cannot be a file.** The app requires a PostgreSQL connection string. A container's filesystem is rebuilt on every deploy — and, on hosts that sleep when idle, on every wake — so a database file inside it silently loses every account, session and collected event each time. The entrypoint refuses to start against a `file:` URL for that reason.
 
 Everything referenced here ships with the repository: [`Dockerfile`](Dockerfile), [`docker-compose.yml`](docker-compose.yml), [`Caddyfile`](Caddyfile), [`docker-entrypoint.sh`](docker-entrypoint.sh) and [`.env.production.example`](.env.production.example).
 
@@ -18,8 +22,7 @@ Everything referenced here ships with the repository: [`Dockerfile`](Dockerfile)
 - [5. Register OAuth redirect URIs](#5-register-oauth-redirect-uris)
 - [6. Verify](#6-verify)
 - [Operating it](#operating-it)
-- [Using PostgreSQL instead of SQLite](#using-postgresql-instead-of-sqlite)
-- [Deploying to Vercel instead](#deploying-to-vercel-instead)
+- [Deploying to a managed host](#deploying-to-a-managed-host)
 - [Hardening checklist](#hardening-checklist)
 
 ---
@@ -80,14 +83,16 @@ cp .env.production.example .env.production
 chmod 600 .env.production
 ```
 
-Edit `.env.production`. Two values must be set before the first start:
+Edit `.env.production`. Three values must be set before the first start:
 
 ```bash
-# A fresh secret. Do not reuse the development one. Changing it later signs everyone out.
+# A fresh secret, and a database password. Do not reuse the development values.
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
 ```
 
-- `SESSION_SECRET` — paste the value from that command.
+- `SESSION_SECRET` — paste the first value. Changing it later signs everyone out.
+- `POSTGRES_PASSWORD` — paste the second. Compose gives it to the database container and builds `DATABASE_URL` from it, so you do not set `DATABASE_URL` yourself here. Changing it after the first start does not change the password already stored in the volume, so pick it now.
 - `APP_URL` — `https://saibersecurity.com`, with no trailing slash. Every OAuth callback URL is built from this, so a mismatch here is the most common cause of a failed provider sign-in.
 
 Leave `SEED_ON_FIRST_BOOT="true"` if you want the demo dataset. It runs only when the database contains no users, so a restart can never overwrite real accounts. Set it to `false` once you have your own.
@@ -103,7 +108,7 @@ docker compose --env-file .env.production up -d --build
 docker compose logs -f
 ```
 
-The first build takes a few minutes. In the logs you should see the entrypoint apply migrations, optionally seed, then the server report it is ready, and Caddy obtain a certificate.
+The first build takes a few minutes. In the logs you should see PostgreSQL report itself ready, the entrypoint print `using PostgreSQL` and apply migrations, optionally seed, then the server report it is ready, and Caddy obtain a certificate. The app waits for the database's healthcheck, so the order is deterministic.
 
 **These container files have not been run in this environment**, because Docker is not installed on the machine where the project was built. They are written conservatively for that reason. Watch the first `docker compose up` rather than running it detached and assuming success.
 
@@ -154,33 +159,43 @@ Then in a browser:
 | Deploy an update | `git pull && docker compose --env-file .env.production up -d --build` |
 | Apply new migrations | Automatic on every container start. |
 | Shell in the container | `docker compose exec app sh` |
-| Back up the database | `docker compose exec app sh -c 'sqlite3 /data/saiber.db ".backup /data/backup.db"'` then copy it off the volume |
+| Back up the database | `docker compose exec -T db pg_dump -U saiber saiber > saiber-$(date +%F).sql` |
+| Restore a backup | `docker compose exec -T db psql -U saiber -d saiber < saiber-2026-09-26.sql` |
+| Open a SQL prompt | `docker compose exec db psql -U saiber -d saiber` |
 
-Back up `/data` on a schedule. It holds the only copy of your accounts, events and incidents.
+Run that `pg_dump` on a schedule and keep the output off the server. The `saiber-db` volume holds the only copy of your accounts, events and incidents; deleting it — including with `docker compose down -v` — destroys them.
 
 `npm run db:reset` destroys all data and must never be run against this deployment.
 
 ---
 
-## Using PostgreSQL instead of SQLite
+## Deploying to a managed host
 
-SQLite on a mounted volume is a sound choice for a single server, and it is what the compose file uses. Move to PostgreSQL when you want more than one app container, or managed backups and failover.
+Any host that runs a container works — Render, Fly.io, Railway, a Kubernetes cluster — with one requirement: **provision a PostgreSQL instance and point `DATABASE_URL` at it.** Managed hosts give containers a disposable filesystem, and most free tiers also stop the container when it is idle and rebuild it on the next request. A database living inside the container does not survive either event.
 
-Prisma requires the provider to be a literal in the schema, so it cannot be switched by an environment variable:
+### Render
 
-1. In [`prisma/schema.prisma`](prisma/schema.prisma), change `provider = "sqlite"` to `provider = "postgresql"`.
-2. Delete `prisma/migrations/` and regenerate it against a Postgres database: `npx prisma migrate dev --name init`. The existing migrations contain SQLite-specific SQL and will not apply.
-3. Set `DATABASE_URL` to your connection string and drop the volume from `docker-compose.yml`.
+1. **Create the database.** Dashboard → **New → Postgres**. Any plan, including the free one. When it finishes provisioning, copy its **Internal Database URL** — the `postgresql://…` string. Use the internal URL, not the external one: it is faster, does not leave Render's network, and does not count against connection limits the same way.
+2. **Create the web service.** **New → Web Service**, connected to the repository, with **Docker** as the runtime. Render reads the [`Dockerfile`](Dockerfile); no build or start command is needed.
+3. **Set the environment variables** under the service's **Environment** tab:
 
-No application code changes, because every query goes through Prisma. Doing this after go-live means migrating your data across, so decide before you have real accounts.
+   | Key | Value |
+   | --- | --- |
+   | `DATABASE_URL` | the Internal Database URL from step 1 |
+   | `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
+   | `APP_URL` | your service URL, e.g. `https://saibersecurity.onrender.com`, no trailing slash |
+   | `NODE_ENV` | `production` |
 
----
+   Add the OAuth, Twilio and mail values only for the features you want. Do **not** set `MAIL_DEV_FALLBACK`; on a reachable deployment it returns password-reset links in the HTTP response, which is a way into any account.
+4. **Deploy.** The entrypoint applies migrations on every boot, so the schema is created on the first deploy and updated on later ones with no manual step. In the logs, `[entrypoint] using PostgreSQL` confirms it found the database.
 
-## Deploying to Vercel instead
+Accounts, sessions and collected events now live in the Postgres instance and survive deploys, restarts and idle spin-downs. The free tier still sleeps after inactivity, so the first request after a quiet period takes half a minute — but nothing is lost, and you stay signed in.
 
-Vercel works, with one hard constraint: **its filesystem is ephemeral, so SQLite cannot be used.** Follow the PostgreSQL section first, with a managed database such as Vercel Postgres, Neon or Supabase.
+Free Postgres instances on Render expire after a fixed period and are then deleted. If that matters, take `pg_dump` backups or move to a paid plan.
 
-Then set the environment variables from `.env.production.example` in the project settings, add `saibersecurity.com` as a custom domain, and point DNS at the records Vercel provides instead of at your own server. `next build` needs `prisma generate` to have run, which the existing `build` script already does. Nothing else in the project assumes a long-lived server, so it deploys as is.
+### Elsewhere
+
+Set the same four variables, plus the optional ones you need. On Vercel the app deploys as is — `next build` already runs `prisma generate` — with a managed database such as Neon, Supabase or Vercel Postgres; note that migrations are not applied by a build there, so run `npx prisma migrate deploy` against the database yourself when the schema changes.
 
 ---
 
@@ -192,8 +207,8 @@ Before putting the URL in front of anyone:
 - [ ] `SEED_ON_FIRST_BOOT` is `false` once real accounts exist.
 - [ ] The seeded `demo@saibersecurity.com` account is deleted, or its password changed. Its credentials are public knowledge, since they are in this repository. The sign-in page no longer prints them in production, but the account still works until you remove it.
 - [ ] **Sign-up is open to anyone who can reach the URL, and every account gets full analyst access.** There is no invite, approval step, domain allow-list or role system. Put the site behind an allow-list, or add one, before exposing it publicly.
-- [ ] A firewall permits only 80, 443 and your SSH port.
-- [ ] `/data` is backed up somewhere off the server.
+- [ ] A firewall permits only 80, 443 and your SSH port. The database container publishes no port, so it is reachable only from the app.
+- [ ] `pg_dump` output is written somewhere off the server on a schedule.
 - [ ] Automatic security updates are enabled on the host.
 
 The rate limiter is in-memory and per container, so running more than one app container weakens it. Move it to a shared store before scaling out.

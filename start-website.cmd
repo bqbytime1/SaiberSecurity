@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title SaiberSecurity - local website
+title SAiberSecurity - local website
 
 cd /d "%~dp0"
 
@@ -23,7 +23,7 @@ set HOSTNAME=127.0.0.1
 set PORT=80
 
 echo.
-echo   SaiberSecurity - starting local website
+echo   SAiberSecurity - starting local website
 echo   ---------------------------------------
 echo.
 
@@ -32,10 +32,17 @@ if not exist "node_modules\next" (
   call npm install || goto :failed
 )
 
-if not exist "prisma\dev.db" (
-  echo   Setting up the database and demo data...
-  call npm run setup || goto :failed
+if not exist ".env" (
+  echo   No .env file found. Copy .env.example to .env and set DATABASE_URL to your
+  echo   PostgreSQL server before running this again.
+  goto :failed
 )
+
+REM Idempotent: applies any migration the database has not seen yet and does nothing
+REM otherwise, so it is safe on every start. It also fails loudly if PostgreSQL is
+REM not running, which is a much clearer error than one from the first page load.
+echo   Checking the database...
+call npx prisma migrate deploy || goto :nodb
 
 if not exist ".next\BUILD_ID" (
   echo   Building the site. This happens once and takes about a minute...
@@ -50,6 +57,17 @@ REM Give the server a moment to bind before the browser opens.
 start "" /b cmd /c "timeout /t 4 /nobreak >nul & start http://localhost"
 
 node "node_modules\next\dist\bin\next" start --hostname 127.0.0.1 --port 80
+goto :eof
+
+:nodb
+echo.
+echo   The database could not be reached. Check that PostgreSQL is running and that
+echo   DATABASE_URL in .env points at it. On Windows the service is usually called
+echo   postgresql-x64-17; start it with:
+echo.
+echo       net start postgresql-x64-17
+echo.
+pause
 goto :eof
 
 :failed
