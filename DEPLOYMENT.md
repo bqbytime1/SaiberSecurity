@@ -171,23 +171,34 @@ Run that `pg_dump` on a schedule and keep the output off the server. The `saiber
 
 ## Deploying to a managed host
 
-Any host that runs a container works — Render, Fly.io, Railway, a Kubernetes cluster — with one requirement: **provision a PostgreSQL instance and point `DATABASE_URL` at it.** Managed hosts give containers a disposable filesystem, and most free tiers also stop the container when it is idle and rebuild it on the next request. A database living inside the container does not survive either event.
+Any managed host works — Render, Fly.io, Railway, a Kubernetes cluster — with one requirement: **provision a PostgreSQL instance and point `DATABASE_URL` at it.** Managed hosts give containers a disposable filesystem, and most free tiers also stop the container when it is idle and rebuild it on the next request. A database living inside the container does not survive either event.
 
-### Render
+On Render there is nothing to configure by hand; the blueprint below does it.
 
-1. **Create the database.** Dashboard → **New → Postgres**. Any plan, including the free one. When it finishes provisioning, copy its **Internal Database URL** — the `postgresql://…` string. Use the internal URL, not the external one: it is faster, does not leave Render's network, and does not count against connection limits the same way.
-2. **Create the web service.** **New → Web Service**, connected to the repository, with **Docker** as the runtime. Render reads the [`Dockerfile`](Dockerfile); no build or start command is needed.
-3. **Set the environment variables** under the service's **Environment** tab:
+### Render — use the blueprint
 
-   | Key | Value |
-   | --- | --- |
-   | `DATABASE_URL` | the Internal Database URL from step 1 |
-   | `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-   | `APP_URL` | your service URL, e.g. `https://saibersecurity.onrender.com`, no trailing slash |
-   | `NODE_ENV` | `production` |
+[`render.yaml`](render.yaml) declares the database and the web service together, so there is nothing to fill in by hand and nothing to forget:
 
-   Add the OAuth, Twilio and mail values only for the features you want. Do **not** set `MAIL_DEV_FALLBACK`; on a reachable deployment it returns password-reset links in the HTTP response, which is a way into any account.
-4. **Deploy.** The entrypoint applies migrations on every boot, so the schema is created on the first deploy and updated on later ones with no manual step. In the logs, `[entrypoint] using PostgreSQL` confirms it found the database.
+1. Dashboard → **New → Blueprint**, and pick this repository.
+2. Render shows what it will create — a `saiber-db` PostgreSQL instance and a `saibersecurity` web service. **Apply.**
+3. Wait for the first deploy. Then open the URL and sign up.
+
+That is the whole procedure. `DATABASE_URL` is wired from the database Render creates, `SESSION_SECRET` is generated for you, and `APP_URL` is unnecessary because the app falls back to the public URL Render injects.
+
+**The blueprint does not use the Dockerfile.** It runs Render's native Node runtime instead:
+
+```
+build: npm ci --include=dev && npx prisma migrate deploy && npm run build
+start: npm start
+```
+
+That is deliberate. A Docker build put apt packages, an entrypoint script and an image copy into the deploy path, all of which can fail for reasons unrelated to the app. The Node runtime removes them. Migrations run in the build step, so the schema is created on the first deploy and updated on later ones with no manual step. `--include=dev` is required rather than cosmetic: `NODE_ENV` is `production`, and npm skips devDependencies in that case, which would drop TypeScript, Tailwind and the Prisma CLI that the build needs.
+
+The Dockerfile is still correct and still maintained — it is for self-hosting with [`docker-compose.yml`](docker-compose.yml), which brings its own PostgreSQL. It is simply not what Render uses.
+
+Two things to know about the free plan. The service sleeps after inactivity, so the first request after a quiet spell takes about half a minute — nothing is lost, and sessions survive. And **free PostgreSQL instances expire after a fixed period and are then deleted**, so take `pg_dump` backups or move to a paid plan before you have data you care about.
+
+If you would rather keep the existing hand-configured service, the variables it needs are `DATABASE_URL` (the database's **Internal** URL, not the external one), `SESSION_SECRET` (≥ 32 characters), and `NODE_ENV=production`. Add OAuth, Twilio and mail values only for the features you want, and never set `MAIL_DEV_FALLBACK` — on a reachable deployment it returns password-reset links in the HTTP response, which is a way into any account.
 
 Accounts, sessions and collected events now live in the Postgres instance and survive deploys, restarts and idle spin-downs. The free tier still sleeps after inactivity, so the first request after a quiet period takes half a minute — but nothing is lost, and you stay signed in.
 

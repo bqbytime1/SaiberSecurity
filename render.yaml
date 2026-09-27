@@ -1,0 +1,76 @@
+# Render Blueprint — provisions the whole deployment from this file.
+#
+# Why this exists: configuring the service by hand in the dashboard meant the database
+# URL, the session secret and the runtime all had to be set correctly by someone
+# remembering to, and a Docker build added apt, an entrypoint script and a multi-stage
+# image copy as extra things that can fail. This declares the lot instead.
+#
+# It deliberately does NOT use the Dockerfile. Render's native Node runtime installs,
+# builds and starts the app directly, which removes every container-specific failure
+# from the deploy path. The Dockerfile is still there and still correct — it is for
+# self-hosting with docker-compose, where it brings its own PostgreSQL.
+#
+# To use: Render Dashboard -> New -> Blueprint -> pick this repository.
+
+databases:
+  - name: saiber-db
+    databaseName: saiber
+    user: saiber
+    plan: free
+
+services:
+  - type: web
+    name: saibersecurity
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+
+    # --include=dev is not optional: NODE_ENV is production below, and npm skips
+    # devDependencies in that case — which would drop typescript, tailwind and the
+    # Prisma CLI, all of which `npm run build` needs.
+    #
+    # `prisma migrate deploy` runs here, before the build, so the schema is applied on
+    # the first deploy and updated on every later one with no manual step. It only ever
+    # applies migrations that already exist; it never resets or drops anything.
+    buildCommand: npm ci --include=dev && npx prisma migrate deploy && npm run build
+    startCommand: npm start
+
+    # Render restarts the service if this stops answering, and uses it to decide when a
+    # new deploy is live. /login is the right probe: it is public, so it needs no
+    # session, and it renders from the database-backed app rather than a static file.
+    healthCheckPath: /login
+
+    envVars:
+      # Wired straight from the database above, so it is never pasted by hand and never
+      # points at a stale instance.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: saiber-db
+          property: connectionString
+
+      # Generated once by Render and then held. Regenerating it signs everyone out, so
+      # it must not be reset casually.
+      - key: SESSION_SECRET
+        generateValue: true
+
+      - key: NODE_ENV
+        value: production
+
+      # APP_URL is intentionally unset: the app falls back to RENDER_EXTERNAL_URL, which
+      # Render injects. Set it explicitly only once a custom domain is attached.
+
+      # Off, because on a server the collector would report this container's own
+      # outbound connections — the datacenter's traffic, not yours. Host monitoring is
+      # something you run on the machine you actually want watched.
+      - key: HOST_MONITOR_ENABLED
+        value: "false"
+
+      # A new deployment starts empty and fills only with what it genuinely observes.
+      - key: SEED_ON_FIRST_BOOT
+        value: "false"
+
+      # The built-in demo password is published in this repository, so printing it on a
+      # public sign-in page would publish a working login.
+      - key: SHOW_DEMO_CREDENTIALS
+        value: "false"

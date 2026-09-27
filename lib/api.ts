@@ -26,6 +26,11 @@ export function publicOrigin(req: NextRequest): string {
   const configured = process.env.APP_URL?.trim();
   if (configured) return configured.replace(/\/+$/, "");
 
+  // Render supplies its own public URL, so a deployment there is correct without APP_URL
+  // being set by hand. One fewer value to get wrong.
+  const render = process.env.RENDER_EXTERNAL_URL?.trim();
+  if (render) return render.replace(/\/+$/, "");
+
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
   if (host) {
     const proto = req.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? req.nextUrl.protocol.replace(":", "");
