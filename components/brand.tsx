@@ -21,7 +21,7 @@ export function BrandWordmark({ className, subtitle, href }: { className?: strin
     <>
       <BrandMark />
       <div className="leading-tight">
-        <div className="text-[15px] font-semibold tracking-tight text-foreground">SaiberSecurity</div>
+        <div className="text-[15px] font-semibold tracking-tight text-foreground">SAiberSecurity</div>
         {subtitle && <div className="text-[11px] text-muted-foreground">{subtitle}</div>}
       </div>
     </>
@@ -32,7 +32,7 @@ export function BrandWordmark({ className, subtitle, href }: { className?: strin
   return (
     <Link
       href={href}
-      aria-label="SaiberSecurity home"
+      aria-label="SAiberSecurity home"
       className={cn(
         "flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
         className,

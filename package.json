@@ -2,7 +2,7 @@
   "name": "saibersecurity",
   "version": "0.1.0",
   "private": true,
-  "description": "SaiberSecurity — AI-powered security monitoring.",
+  "description": "SAiberSecurity — AI-powered security monitoring.",
   "scripts": {
     "dev": "next dev",
     "setup": "prisma migrate deploy && tsx prisma/seed.ts",

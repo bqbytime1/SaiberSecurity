@@ -48,7 +48,7 @@ function withinActiveHours(now: Date, hoursAgo: number, p: Persona): Date {
 }
 
 async function main() {
-  console.log("SaiberSecurity — seeding database");
+  console.log("SAiberSecurity — seeding database");
   const started = Date.now();
 
   // The seeded dataset belongs to one organization. An existing one is reused so

@@ -8,7 +8,7 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
       <section className="hidden w-[46%] flex-col justify-between border-r border-border bg-panel p-10 lg:flex">
         <div className="flex items-center gap-3">
           <BrandMark className="size-8" />
-          <span className="text-lg font-semibold tracking-tight">SaiberSecurity</span>
+          <span className="text-lg font-semibold tracking-tight">SAiberSecurity</span>
         </div>
         <div className="max-w-md space-y-6">
           <div>
@@ -16,7 +16,7 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
             <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-tight">Behavioral anomaly detection for modern security teams.</h1>
           </div>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            SaiberSecurity learns what normal looks like across your users, devices, and infrastructure, then identifies the deviations that matter — correlating them into
+            SAiberSecurity learns what normal looks like across your users, devices, and infrastructure, then identifies the deviations that matter — correlating them into
             incidents, explaining them in plain language, and recommending defensive next steps.
           </p>
           <ul className="grid gap-3 text-sm text-muted-foreground">
@@ -28,14 +28,14 @@ export function AuthLayout({ title, subtitle, children, footer }: { title: strin
             ))}
           </ul>
         </div>
-        <p className="text-xs text-muted-foreground">© {new Date().getUTCFullYear()} SaiberSecurity. All systems monitored.</p>
+        <p className="text-xs text-muted-foreground">© {new Date().getUTCFullYear()} SAiberSecurity. All systems monitored.</p>
       </section>
 
       <section className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-sm py-10">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <BrandMark className="size-8" />
-            <span className="text-lg font-semibold tracking-tight">SaiberSecurity</span>
+            <span className="text-lg font-semibold tracking-tight">SAiberSecurity</span>
           </div>
           <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>

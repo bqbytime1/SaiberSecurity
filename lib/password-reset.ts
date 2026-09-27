@@ -43,8 +43,8 @@ export async function requestPasswordReset(email: string, origin: string): Promi
     const how = accounts.length ? accounts.map((a) => a.provider).join(" or ") : "your phone number";
     const result = await safeSend({
       to: email,
-      subject: "Signing in to SaiberSecurity",
-      text: `You asked to reset your SaiberSecurity password, but this account does not use one.\n\nSign in with ${how} instead.\n\nIf you did not request this, you can ignore this message.`,
+      subject: "Signing in to SAiberSecurity",
+      text: `You asked to reset your SAiberSecurity password, but this account does not use one.\n\nSign in with ${how} instead.\n\nIf you did not request this, you can ignore this message.`,
     });
     return result.preview ? { devLink: result.preview } : {};
   }
@@ -71,7 +71,7 @@ export async function requestPasswordReset(email: string, origin: string): Promi
   const link = resetUrl(token, origin);
   const result = await safeSend({
     to: email,
-    subject: "Reset your SaiberSecurity password",
+    subject: "Reset your SAiberSecurity password",
     text: `Use this link to choose a new password. It expires in one hour and works once.\n\n${link}\n\nIf you did not ask for this, ignore this message and your password stays as it is.`,
   });
 

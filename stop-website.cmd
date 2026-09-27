@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title SaiberSecurity - stop local website
+title SAiberSecurity - stop local website
 
 echo.
-echo   Stopping the SaiberSecurity website...
+echo   Stopping the SAiberSecurity website...
 
 REM Only kill the process actually listening on port 80, so other Node apps are
 REM left alone.

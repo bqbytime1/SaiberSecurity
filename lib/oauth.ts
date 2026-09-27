@@ -114,7 +114,7 @@ const PROVIDERS: Record<OAuthProviderId, ProviderDefinition> = {
     clientId: () => process.env.GITHUB_CLIENT_ID || undefined,
     clientSecret: () => process.env.GITHUB_CLIENT_SECRET || undefined,
     async fetchProfile(accessToken) {
-      const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json", "User-Agent": "SaiberSecurity" };
+      const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/vnd.github+json", "User-Agent": "SAiberSecurity" };
       const p = await httpJson<{ id: number; login: string; name?: string | null; avatar_url?: string }>("https://api.github.com/user", { headers });
       // The profile email is null when the user keeps it private, so ask for the
       // address list and take the verified primary.

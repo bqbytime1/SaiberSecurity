@@ -109,7 +109,7 @@ export async function issuePhoneCode(phone: string, name: string | null): Promis
   // Opportunistic cleanup so the table does not grow without bound.
   void prisma.verificationCode.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 24 * 3600_000) } } }).catch(() => undefined);
 
-  return sendSms(phone, `Your SaiberSecurity verification code is ${code}. It expires in 10 minutes.`);
+  return sendSms(phone, `Your SAiberSecurity verification code is ${code}. It expires in 10 minutes.`);
 }
 
 export type CodeCheck =
