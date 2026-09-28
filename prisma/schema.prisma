@@ -1,5 +1,12 @@
+// binaryTargets matters the moment this runs anywhere but the machine that built it.
+// Prisma ships a native query engine, and by default generates one only for the build
+// platform. On a serverless host — AWS Amplify and Lambda, Vercel's functions — the
+// build and the runtime are different environments, and a client without the runtime's
+// engine throws on the first query. Pages still render, so the symptom is that only
+// database-backed actions fail. "native" keeps local development working.
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 // PostgreSQL rather than SQLite, because the database has to outlive the process.

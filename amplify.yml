@@ -1,0 +1,51 @@
+# AWS Amplify Hosting build specification.
+#
+# Without this file Amplify uses its default Next.js build, which installs, builds and
+# deploys — but never applies database migrations. The app then serves every page
+# correctly and fails the moment anything touches the database, because the tables were
+# never created. Creating an account is usually the first thing to hit that, so the
+# symptom is a working site with a 500 on sign-up.
+#
+# Requires two environment variables, set under App settings -> Environment variables:
+#
+#   DATABASE_URL     PostgreSQL connection string, reachable from AWS.
+#                    Amplify does not provide a database. Neon, Supabase or RDS with
+#                    public access all work; RDS inside a VPC does not, unless the
+#                    compute role is attached to that VPC.
+#   SESSION_SECRET   At least 32 characters. Generate with:
+#                      node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+#
+# Both are needed at build time and at runtime. If DATABASE_URL is missing the build
+# fails here, loudly, instead of deploying a site that 500s on first use.
+
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        # --include=dev because Amplify sets NODE_ENV=production, and npm then skips
+        # devDependencies — which would drop TypeScript, Tailwind and the Prisma CLI,
+        # all of which the build needs.
+        - npm ci --include=dev
+
+    build:
+      commands:
+        # Applies any migration the database has not seen yet and does nothing
+        # otherwise, so it is safe on every deploy. It never resets or drops anything.
+        - npx prisma migrate deploy
+
+        # Runs `prisma generate` first (see package.json), which emits the query engine
+        # for the runtime platform as well as this build machine — see binaryTargets in
+        # prisma/schema.prisma. Without that the Lambda has no engine and every query
+        # throws, even though the build succeeded.
+        - npm run build
+
+  artifacts:
+    baseDirectory: .next
+    files:
+      - "**/*"
+
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
