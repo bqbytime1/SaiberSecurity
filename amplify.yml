@@ -34,8 +34,12 @@ frontend:
         # Amplify ignores this file whenever build settings have been saved in its
         # console, and a deploy that silently skipped the migration step is otherwise
         # indistinguishable from one that ran it.
+        # No colon-space anywhere in these commands. YAML reads ": " inside an unquoted
+        # value as a key separator, so a JavaScript ternary written `a ? b : c` breaks
+        # the whole file with a parse error before the build starts.
         - echo "=== SAiberSecurity build spec from repository amplify.yml ==="
-        - node -e "console.log('DATABASE_URL is', process.env.DATABASE_URL ? 'set' : 'MISSING'); console.log('SESSION_SECRET is', process.env.SESSION_SECRET ? process.env.SESSION_SECRET.length + ' chars' : 'MISSING')"
+        - node -e "console.log('DATABASE_URL present', Boolean(process.env.DATABASE_URL))"
+        - node -e "console.log('SESSION_SECRET length', (process.env.SESSION_SECRET || '').length)"
 
         # Applies any migration the database has not seen yet and does nothing
         # otherwise, so it is safe on every deploy. It never resets or drops anything.
