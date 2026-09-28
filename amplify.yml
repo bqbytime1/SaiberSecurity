@@ -30,8 +30,16 @@ frontend:
 
     build:
       commands:
+        # These markers exist so the build log proves which build specification ran.
+        # Amplify ignores this file whenever build settings have been saved in its
+        # console, and a deploy that silently skipped the migration step is otherwise
+        # indistinguishable from one that ran it.
+        - echo "=== SAiberSecurity build spec from repository amplify.yml ==="
+        - node -e "console.log('DATABASE_URL is', process.env.DATABASE_URL ? 'set' : 'MISSING'); console.log('SESSION_SECRET is', process.env.SESSION_SECRET ? process.env.SESSION_SECRET.length + ' chars' : 'MISSING')"
+
         # Applies any migration the database has not seen yet and does nothing
         # otherwise, so it is safe on every deploy. It never resets or drops anything.
+        - echo "=== applying database migrations ==="
         - npx prisma migrate deploy
 
         # Runs `prisma generate` first (see package.json), which emits the query engine
