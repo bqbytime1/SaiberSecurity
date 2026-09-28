@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { listOAuthProviders } from "@/lib/oauth";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { AuthDivider, ProviderButtons } from "@/components/auth/provider-buttons";
+import { ConfigBanner } from "@/components/auth/config-banner";
 import { LoginForm } from "@/components/auth/login-form";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -61,6 +62,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       }
     >
       <div className="space-y-4">
+        <ConfigBanner />
         <ProviderButtons providers={providers} action="signin" />
         <AuthDivider label="or" />
         <LoginForm notice={notice} demo={demoHint()} />

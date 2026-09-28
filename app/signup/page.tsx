@@ -6,6 +6,7 @@ import { listOAuthProviders } from "@/lib/oauth";
 import { isPhoneSignupAvailable } from "@/lib/phone";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { AuthDivider, ProviderButtons } from "@/components/auth/provider-buttons";
+import { ConfigBanner } from "@/components/auth/config-banner";
 import { SignupForm } from "@/components/auth/signup-form";
 
 export const metadata: Metadata = { title: "Create account" };
@@ -32,6 +33,7 @@ export default async function SignupPage() {
       }
     >
       <div className="space-y-4">
+        <ConfigBanner />
         <ProviderButtons providers={providers} action="signup" />
         <AuthDivider label="or sign up with" />
         <SignupForm phoneAvailable={phoneAvailable} />

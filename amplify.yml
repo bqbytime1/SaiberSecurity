@@ -46,6 +46,30 @@ frontend:
         - echo "=== applying database migrations ==="
         - npx prisma migrate deploy
 
+        # Amplify does not hand environment variables to the SSR runtime.
+        #
+        # They exist during this build — which is why the migration above succeeds and
+        # the build goes green — but the Lambda that serves requests never receives
+        # them, so every query fails at runtime with "Environment variable not found:
+        # DATABASE_URL" while the deploy looks perfectly healthy.
+        #
+        # Writing them into .env.production is the documented way across: Next.js loads
+        # that file when the server starts, so the values reach the runtime. Only the
+        # names below are copied, never the whole environment, so nothing incidental
+        # from the build image ends up in the bundle. This file is server-side only —
+        # Next.js exposes a variable to the browser solely when it is named
+        # NEXT_PUBLIC_*, and none of these are.
+        - echo "=== copying environment into the runtime bundle ==="
+        - rm -f .env.production
+        - touch .env.production
+        - env | grep -E "^(DATABASE_URL|SESSION_SECRET|APP_URL|SHOW_DEMO_CREDENTIALS|HOST_MONITOR_ENABLED|MAIL_API_URL|MAIL_API_KEY|MAIL_FROM|MAIL_TRANSPORT|GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|MICROSOFT_CLIENT_ID|MICROSOFT_CLIENT_SECRET|MICROSOFT_TENANT|GITHUB_CLIENT_ID|GITHUB_CLIENT_SECRET|TWILIO_ACCOUNT_SID|TWILIO_AUTH_TOKEN|TWILIO_FROM_NUMBER|AI_API_KEY|AI_BASE_URL|AI_MODEL)=" >> .env.production || true
+
+        # Names only, never values — build logs are retained and get shared.
+        - node -e "const l=require('fs').readFileSync('.env.production','utf8').split('\n').filter(Boolean); console.log('runtime env entries', l.length); console.log('names', l.map(s=>s.split('=')[0]).join(' '))"
+
+        # Fail here rather than deploy a site that looks fine and 500s on first use.
+        - node -e "const t=require('fs').readFileSync('.env.production','utf8'); if(!t.includes('DATABASE_URL=')) { console.error('FATAL DATABASE_URL is not set in this Amplify app, so the runtime cannot reach a database'); process.exit(1) } if(!t.includes('SESSION_SECRET=')) { console.error('FATAL SESSION_SECRET is not set in this Amplify app, so nobody can sign in'); process.exit(1) }"
+
         # Runs `prisma generate` first (see package.json), which emits the query engine
         # for the runtime platform as well as this build machine — see binaryTargets in
         # prisma/schema.prisma. Without that the Lambda has no engine and every query
