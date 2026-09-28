@@ -1,11 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { ZodError, ZodType } from "zod";
-import { getCurrentUser, type SessionUser } from "./auth";
+import { ConfigurationError, getCurrentUser, type SessionUser } from "./auth";
 import { rateLimit } from "./rate-limit";
 import { formatZodError } from "./validations";
 
 export function jsonError(status: number, message: string, extra?: Record<string, unknown>) {
   return NextResponse.json({ error: message, ...extra }, { status });
+}
+
+/**
+ * Turn a thrown error into a response, separating "someone has not finished setting this
+ * deployment up" from "something genuinely went wrong".
+ *
+ * A missing SESSION_SECRET used to surface as a bare 500, which is indistinguishable from
+ * a bug and sends you looking in the wrong place. It is a 503 naming the problem, because
+ * the server really is unavailable until someone sets a value — and the detail is a
+ * description of what is wrong, never the value itself.
+ */
+export function handleRouteError(err: unknown, label: string) {
+  if (err instanceof ConfigurationError) {
+    console.error(`[api] ${label}: configuration error: ${err.message}`);
+    return jsonError(503, `This deployment is not configured correctly: ${err.message}. Check /api/health.`);
+  }
+  console.error(`[api] ${label}`, err);
+  return jsonError(500, "Internal server error");
 }
 
 export function getClientIp(req: NextRequest): string {

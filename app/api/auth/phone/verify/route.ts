@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { publicUser, upsertPhoneUser } from "@/lib/accounts";
-import { enforceRateLimit, jsonError, parseBody } from "@/lib/api";
+import { enforceRateLimit, handleRouteError, jsonError, parseBody } from "@/lib/api";
 import { createSession, pruneExpiredSessions } from "@/lib/auth";
 import { checkPhoneCode, isPhoneSignupAvailable, normalizePhone } from "@/lib/phone";
 import { phoneVerifySchema } from "@/lib/validations";
@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
     void pruneExpiredSessions();
     return NextResponse.json({ user: publicUser(result.value) });
   } catch (err) {
-    console.error("[api] POST /api/auth/phone/verify", err);
-    return jsonError(500, "Internal server error");
+    return handleRouteError(err, "POST /api/auth/phone/verify");
   }
 }

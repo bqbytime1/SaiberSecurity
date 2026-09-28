@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { publicUser } from "@/lib/accounts";
 import { createSession, pruneExpiredSessions, verifyPassword } from "@/lib/auth";
-import { enforceRateLimit, jsonError, parseBody } from "@/lib/api";
+import { enforceRateLimit, handleRouteError, jsonError, parseBody } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { loginSchema } from "@/lib/validations";
 
@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
     void pruneExpiredSessions();
     return NextResponse.json({ user: publicUser(user) });
   } catch (err) {
-    console.error("[api] POST /api/auth/login", err);
-    return jsonError(500, "Internal server error");
+    return handleRouteError(err, "POST /api/auth/login");
   }
 }

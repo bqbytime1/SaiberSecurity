@@ -210,6 +210,38 @@ Set the same four variables, plus the optional ones you need. On Vercel the app 
 
 ---
 
+## When something is wrong: `/api/health`
+
+Open `https://your-site/api/health` on any deployment. It answers whether the site can actually work, and names what is wrong when it cannot:
+
+```json
+{
+  "ok": false,
+  "checks": [
+    { "name": "sessionSecret", "ok": false, "detail": "SESSION_SECRET is not set" },
+    { "name": "database", "ok": false, "detail": "the tables are missing — migrations have not been applied to this database" }
+  ],
+  "hint": "Set the values named above in this deployment's environment, then redeploy."
+}
+```
+
+It returns 200 when everything is usable and 503 when it is not, so an uptime check treats a site nobody can sign in to as down rather than healthy.
+
+This exists because a misconfigured deployment otherwise presents as `Internal server error` on sign-in, which is indistinguishable from a bug and sends you reading application code instead of setting a variable. The common causes it separates:
+
+| What it says | What to do |
+| --- | --- |
+| `SESSION_SECRET is not set` | Set it. Sign-in and sign-up both issue a session, so both fail without it. |
+| `SESSION_SECRET is N characters long` | Generate a longer one; the minimum is 32. |
+| `DATABASE_URL is not set` | Point it at a PostgreSQL server. |
+| `the tables are missing` | Migrations never ran. On Amplify that is what [`amplify.yml`](amplify.yml) does; elsewhere run `npx prisma migrate deploy`. |
+| `the database server cannot be reached` | Host, port, or a firewall. On AWS, an RDS instance inside a VPC is not reachable from Amplify's compute. |
+| `the database rejected the credentials` | Wrong user or password in `DATABASE_URL`. |
+
+It is deliberately public and unauthenticated, because sign-in is exactly what fails when configuration is wrong — a check you had to sign in to reach would be useless. It reports only whether each thing works and a short description of the fault, never a connection string, a secret, or a raw driver error, since those can carry a host name or credentials. The underlying error goes to the server log instead.
+
+---
+
 ## Hardening checklist
 
 Before putting the URL in front of anyone:

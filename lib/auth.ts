@@ -35,12 +35,40 @@ export interface SessionUser {
   organizationId: string;
 }
 
-function sessionSecret(): string {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error("SESSION_SECRET must be set and at least 32 characters long");
+export const SESSION_SECRET_MIN_LENGTH = 32;
+
+/**
+ * Thrown when the server is missing configuration it cannot run without.
+ *
+ * Distinct from an ordinary failure so a route can answer "this deployment is not
+ * configured" instead of "internal server error". The difference matters: one is a
+ * bug to report, the other is a value someone has to go and set.
+ */
+export class ConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigurationError";
   }
-  return secret;
+}
+
+/**
+ * Why SESSION_SECRET is unusable, or null when it is fine.
+ *
+ * Returns a description, never the value, so it is safe to surface to an operator.
+ */
+export function sessionSecretProblem(): string | null {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return "SESSION_SECRET is not set";
+  if (secret.length < SESSION_SECRET_MIN_LENGTH) {
+    return `SESSION_SECRET is ${secret.length} characters long; it must be at least ${SESSION_SECRET_MIN_LENGTH}`;
+  }
+  return null;
+}
+
+function sessionSecret(): string {
+  const problem = sessionSecretProblem();
+  if (problem) throw new ConfigurationError(problem);
+  return process.env.SESSION_SECRET as string;
 }
 
 export async function hashPassword(password: string): Promise<string> {
