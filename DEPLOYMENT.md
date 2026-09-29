@@ -242,6 +242,40 @@ It is deliberately public and unauthenticated, because sign-in is exactly what f
 
 ---
 
+## Turning on the "Continue with…" buttons
+
+The Google, Microsoft and GitHub buttons render disabled until that provider has credentials, because a button that fails after redirecting you off-site is worse than one that plainly is not available. Each needs two environment variables, and nothing else in the app changes.
+
+**Get the callback URL from the deployment itself.** Open `/api/health` and read `singleSignOn` — it reports the exact URL to register for each provider, built from the hostname the request arrived on:
+
+```json
+"singleSignOn": [
+  { "provider": "google", "configured": false,
+    "callbackUrl": "https://your-site/api/auth/oauth/google/callback" }
+]
+```
+
+A mismatch between the registered URL and this one is the usual reason single sign-on fails, and the provider reports it as `redirect_uri_mismatch`.
+
+| Provider | Where to create the app | Variables |
+| --- | --- | --- |
+| Google | [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) → Create credentials → OAuth client ID → Web application | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Microsoft | [entra.microsoft.com](https://entra.microsoft.com) → App registrations → New registration | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, optionally `MICROSOFT_TENANT` |
+| GitHub | [github.com/settings/developers](https://github.com/settings/developers) → OAuth Apps → New OAuth App | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` |
+
+Register the callback URL as the redirect URI, set both variables, and redeploy. The button enables itself once both are present.
+
+Notes worth knowing before you start:
+
+- **Google** requires the OAuth consent screen to be configured before any client works, and while the app is in "Testing" only accounts you list as test users can sign in.
+- **GitHub** allows exactly one callback URL per OAuth app, so a separate app is needed for local development and for the deployed site.
+- **Microsoft** defaults to `common`, which admits any Microsoft account. Set `MICROSOFT_TENANT` to your directory ID to restrict it to your organisation.
+- On Amplify these variables must also reach the runtime, which [`amplify.yml`](amplify.yml) handles — they are in the list it copies into the server bundle.
+
+The flow is authorization-code with PKCE throughout, and the state and verifier ride in a signed, httpOnly cookie that lives only for the round trip, so a callback that does not correspond to a request this browser made is rejected.
+
+---
+
 ## Hardening checklist
 
 Before putting the URL in front of anyone:

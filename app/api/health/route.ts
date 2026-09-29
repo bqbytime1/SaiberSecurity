@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { publicOrigin } from "@/lib/api";
 import { runHealthChecks } from "@/lib/health";
+import { listOAuthProviders, redirectUri } from "@/lib/oauth";
 
 /**
  * Whether this deployment is actually able to work, and if not, why.
@@ -16,14 +18,26 @@ import { runHealthChecks } from "@/lib/health";
  */
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const checks = await runHealthChecks();
   const ok = checks.every((c) => c.ok);
+
+  // The callback URL each provider needs registered, computed from the origin this
+  // request actually arrived on. A mismatch here is the usual reason single sign-on
+  // fails, and the value is tedious to assemble by hand, so the deployment states it.
+  // These are public endpoints, not secrets.
+  const origin = publicOrigin(req);
+  const singleSignOn = listOAuthProviders().map((p) => ({
+    provider: p.id,
+    configured: p.configured,
+    callbackUrl: redirectUri(p.id, origin),
+  }));
 
   return NextResponse.json(
     {
       ok,
       checks: checks.map(({ name, ok: passed, detail }) => ({ name, ok: passed, detail })),
+      singleSignOn,
       ...(ok ? {} : { hint: "Set the values named above in this deployment's environment, then redeploy." }),
     },
     // 503 when something is wrong, so an uptime check treats it as down rather than
